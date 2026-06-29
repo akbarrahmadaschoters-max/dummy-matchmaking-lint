@@ -9,6 +9,8 @@ export default function App() {
   const [teachers, setTeachers] = useState(INITIAL_TEACHERS);
   const [page, setPage] = useState("dashboard");
 
+  console.log("Verify Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
+
   const tabStyle = (active) => ({
     padding: "8px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600,
     cursor: "pointer", border: "none", transition: "all 0.15s",

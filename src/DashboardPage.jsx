@@ -46,6 +46,8 @@ function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken })
       const end = new Date(start);
       end.setHours(10, 0, 0, 0);
 
+      console.log("Token before fetch:", token);
+
       const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
         method: "POST",
         headers: {
