@@ -36,15 +36,24 @@ function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken })
   const [loadingCal, setLoadingCal] = useState(false);
   const [calMsg, setCalMsg] = useState(null);
 
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const defDate = tomorrow.toISOString().split("T")[0];
+  const minDate = new Date().toISOString().split("T")[0];
+
+  const [inspDate, setInspDate] = useState(defDate);
+  const [inspTime, setInspTime] = useState("09:00");
+  const [isScheduled, setIsScheduled] = useState(false);
+
   const createEvent = async (token) => {
     setLoadingCal(true);
     setCalMsg(null);
     try {
-      const start = new Date();
-      start.setDate(start.getDate() + 1);
-      start.setHours(9, 0, 0, 0);
+      const [year, month, day] = inspDate.split("-");
+      const [hours, minutes] = inspTime.split(":");
+      const start = new Date(year, month - 1, day, hours, minutes, 0, 0);
       const end = new Date(start);
-      end.setHours(10, 0, 0, 0);
+      end.setHours(start.getHours() + 1);
 
       console.log("Token before fetch:", token);
 
@@ -64,6 +73,7 @@ function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken })
 
       if (!res.ok) throw new Error("Gagal membuat event");
       setCalMsg({ type: "success", text: "✅ Event inspeksi berhasil dibuat di Google Calendar" });
+      setIsScheduled(true);
     } catch (err) {
       setCalMsg({ type: "error", text: "❌ " + err.message });
     } finally {
@@ -172,11 +182,21 @@ function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken })
 
         {!teacher.hasInspection && (
           <div style={{ padding: "0 28px 16px" }}>
-            <button onClick={handleTrigger} disabled={loadingCal} style={{
-              width: "100%", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A",
-              borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, cursor: loadingCal ? "not-allowed" : "pointer",
+            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Tanggal Inspeksi</label>
+                <input type="date" value={inspDate} min={minDate} onChange={e => setInspDate(e.target.value)} disabled={isScheduled} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: isScheduled ? "#F8FAFC" : "#FFF", color: isScheduled ? "#94A3B8" : "#0F172A", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Jam Mulai</label>
+                <input type="time" value={inspTime} step="1800" onChange={e => setInspTime(e.target.value)} disabled={isScheduled} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: isScheduled ? "#F8FAFC" : "#FFF", color: isScheduled ? "#94A3B8" : "#0F172A", boxSizing: "border-box" }} />
+              </div>
+            </div>
+            <button onClick={handleTrigger} disabled={loadingCal || isScheduled} style={{
+              width: "100%", background: isScheduled ? "#F0FDF4" : "#FEF3C7", color: isScheduled ? "#16A34A" : "#92400E", border: `1px solid ${isScheduled ? "#BBF7D0" : "#FDE68A"}`,
+              borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, cursor: (loadingCal || isScheduled) ? "not-allowed" : "pointer", transition: "all 0.2s"
             }}>
-              {loadingCal ? "⏳ Membuat Jadwal..." : "📋 Trigger Jadwal Inspeksi"}
+              {loadingCal ? "⏳ Membuat Jadwal..." : isScheduled ? "✅ Inspeksi Dijadwalkan" : "📋 Trigger Jadwal Inspeksi"}
             </button>
             {calMsg && (
               <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: calMsg.type === "success" ? "#F0FDF4" : "#FEF2F2", color: calMsg.type === "success" ? "#16A34A" : "#DC2626", border: `1px solid ${calMsg.type === "success" ? "#BBF7D0" : "#FECACA"}` }}>
