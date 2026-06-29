@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { INITIAL_TEACHERS, calcScore, getStatus, STATUS_CONFIG, scoreColor } from "./scoring.js";
 import { StatusBadge, ScoreBar } from "./components.jsx";
+import { useGoogleLogin } from "@react-oauth/google";
 
 // ─── Dashboard-specific sub-components ─────────────────────────
 function MetricCard({ statusKey, count, total, onClick, active }) {
@@ -27,11 +28,63 @@ function MetricCard({ statusKey, count, total, onClick, active }) {
   );
 }
 
-function DrillDown({ teacher, score, onClose, onDisqualify }) {
+function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken }) {
   const { breakdown, penalty } = score;
   const status = getStatus(score, teacher);
   const [showDisq, setShowDisq] = useState(false);
   const [reason, setReason] = useState("Time Availability");
+  const [loadingCal, setLoadingCal] = useState(false);
+  const [calMsg, setCalMsg] = useState(null);
+
+  const createEvent = async (token) => {
+    setLoadingCal(true);
+    setCalMsg(null);
+    try {
+      const start = new Date();
+      start.setDate(start.getDate() + 1);
+      start.setHours(9, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(10, 0, 0, 0);
+
+      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          summary: `Inspeksi Class — ${teacher.name}`,
+          description: `Jadwal inspeksi untuk ${teacher.name} · Program: ${teacher.program} · Triggered dari LINT Matchmaking Dashboard`,
+          start: { dateTime: start.toISOString(), timeZone: "Asia/Jakarta" },
+          end: { dateTime: end.toISOString(), timeZone: "Asia/Jakarta" }
+        })
+      });
+
+      if (!res.ok) throw new Error("Gagal membuat event");
+      setCalMsg({ type: "success", text: "✅ Event inspeksi berhasil dibuat di Google Calendar" });
+    } catch (err) {
+      setCalMsg({ type: "error", text: "❌ " + err.message });
+    } finally {
+      setLoadingCal(false);
+    }
+  };
+
+  const login = useGoogleLogin({
+    scope: "https://www.googleapis.com/auth/calendar.events",
+    onSuccess: (tokenResponse) => {
+      setGToken(tokenResponse.access_token);
+      createEvent(tokenResponse.access_token);
+    },
+    onError: () => setCalMsg({ type: "error", text: "❌ Google Login dibatalkan atau gagal" })
+  });
+
+  const handleTrigger = () => {
+    if (gToken) {
+      createEvent(gToken);
+    } else {
+      login();
+    }
+  };
 
   return (
     <div style={{
@@ -117,12 +170,17 @@ function DrillDown({ teacher, score, onClose, onDisqualify }) {
 
         {!teacher.hasInspection && (
           <div style={{ padding: "0 28px 16px" }}>
-            <button style={{
+            <button onClick={handleTrigger} disabled={loadingCal} style={{
               width: "100%", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A",
-              borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, cursor: loadingCal ? "not-allowed" : "pointer",
             }}>
-              📋 Trigger Jadwal Inspeksi
+              {loadingCal ? "⏳ Membuat Jadwal..." : "📋 Trigger Jadwal Inspeksi"}
             </button>
+            {calMsg && (
+              <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: calMsg.type === "success" ? "#F0FDF4" : "#FEF2F2", color: calMsg.type === "success" ? "#16A34A" : "#DC2626", border: `1px solid ${calMsg.type === "success" ? "#BBF7D0" : "#FECACA"}` }}>
+                {calMsg.text}
+              </div>
+            )}
           </div>
         )}
 
@@ -245,6 +303,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
   const [adding, setAdding]           = useState(false);
   const [activeMetric, setActiveMetric]   = useState(null);
   const [importPreview, setImportPreview] = useState(null);
+  const [gToken, setGToken] = useState(null);
   const fileInputRef = useRef(null);
   
   const [matchMode, setMatchMode]         = useState(false);
@@ -652,6 +711,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
             updateTeacher({ ...drill.teacher, isDisqualified: true, disqualifiedReason: reason, disqualifiedAt: new Date().toISOString() });
             setDrill(null);
           }}
+          gToken={gToken} setGToken={setGToken}
         />
       )}{editing  && <EditModal teacher={editing} onSave={updateTeacher} onClose={() => setEditing(null)} />}
       {adding   && <AddTeacherModal onSave={t => setTeachers([...teachers, t])} onClose={() => setAdding(false)} />}
