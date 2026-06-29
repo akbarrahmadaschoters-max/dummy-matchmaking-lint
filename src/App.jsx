@@ -2,6 +2,8 @@ import { useState } from "react";
 import { INITIAL_TEACHERS } from "./scoring.js";
 import DashboardPage from "./DashboardPage.jsx";
 import ComparisonPage from "./ComparisonPage.jsx";
+import OnboardingPage from "./OnboardingPage.jsx";
+import DisqualifiedPage from "./DisqualifiedPage.jsx";
 
 export default function App() {
   const [teachers, setTeachers] = useState(INITIAL_TEACHERS);
@@ -31,6 +33,8 @@ export default function App() {
             <div style={{ display: "flex", gap: 4, background: "#F8FAFC", padding: 4, borderRadius: 11 }}>
               <button style={tabStyle(page === "dashboard")} onClick={() => setPage("dashboard")}>Dashboard</button>
               <button style={tabStyle(page === "comparison")} onClick={() => setPage("comparison")}>Comparison</button>
+              <button style={tabStyle(page === "onboarding")} onClick={() => setPage("onboarding")}>Onboarding Pool</button>
+              <button style={tabStyle(page === "disqualified")} onClick={() => setPage("disqualified")}>Disqualified</button>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -41,9 +45,10 @@ export default function App() {
       </div>
 
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 32px" }}>
-        {page === "dashboard"
-          ? <DashboardPage teachers={teachers} setTeachers={setTeachers} />
-          : <ComparisonPage teachers={teachers} />}
+        {page === "dashboard" && <DashboardPage teachers={teachers} setTeachers={setTeachers} />}
+        {page === "comparison" && <ComparisonPage teachers={teachers} />}
+        {page === "onboarding" && <OnboardingPage teachers={teachers} setTeachers={setTeachers} />}
+        {page === "disqualified" && <DisqualifiedPage teachers={teachers} setTeachers={setTeachers} />}
       </div>
     </div>
   );

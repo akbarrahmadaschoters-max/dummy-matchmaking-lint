@@ -1,7 +1,7 @@
 import { STATUS_CONFIG } from "./scoring.js";
 
 export function StatusBadge({ status, small }) {
-  const c = STATUS_CONFIG[status];
+  const c = STATUS_CONFIG[status] || { bg: "#F1F5F9", text: "#64748B", border: "#E2E8F0", dot: "#94A3B8", label: status };
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5,
@@ -16,12 +16,14 @@ export function StatusBadge({ status, small }) {
 }
 
 export function ScoreBar({ val, color }) {
+  const displayVal = val ?? "—";
+  const numVal = val ?? 0;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ flex: 1, height: 6, background: "#F1F5F9", borderRadius: 99 }}>
-        <div style={{ width: `${val}%`, height: "100%", background: color || "#6366F1", borderRadius: 99, transition: "width 0.4s" }} />
+        <div style={{ width: `${numVal}%`, height: "100%", background: color || "#6366F1", borderRadius: 99, transition: "width 0.4s" }} />
       </div>
-      <span style={{ fontSize: 12, color: "#64748B", width: 28, textAlign: "right" }}>{val}</span>
+      <span style={{ fontSize: 12, color: "#64748B", width: 28, textAlign: "right" }}>{displayVal}</span>
     </div>
   );
 }

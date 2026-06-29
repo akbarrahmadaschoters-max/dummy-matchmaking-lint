@@ -1,10 +1,13 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
+import Papa from "papaparse";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { INITIAL_TEACHERS, calcScore, getStatus, STATUS_CONFIG, scoreColor } from "./scoring.js";
 import { StatusBadge, ScoreBar } from "./components.jsx";
 
 // ─── Dashboard-specific sub-components ─────────────────────────
-function MetricCard({ statusKey, count, onClick, active }) {
+function MetricCard({ statusKey, count, total, onClick, active }) {
   const c = STATUS_CONFIG[statusKey];
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
     <div onClick={onClick} style={{
       background: active ? c.bg : "#FFFFFF",
@@ -17,14 +20,18 @@ function MetricCard({ statusKey, count, onClick, active }) {
         {c.label}
       </div>
       <div style={{ fontSize: 32, fontWeight: 700, color: "#0F172A", lineHeight: 1 }}>{count}</div>
-      <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>teacher</div>
+      <div style={{ fontSize: 13, color: "#64748B", marginTop: 6, fontWeight: 500 }}>
+        {pct}% of pool
+      </div>
     </div>
   );
 }
 
-function DrillDown({ teacher, score, onClose }) {
-  const { breakdown, penalty, disqualifiedReason } = score;
-  const status = getStatus(score.final, teacher.gantiTutor, teacher.available);
+function DrillDown({ teacher, score, onClose, onDisqualify }) {
+  const { breakdown, penalty } = score;
+  const status = getStatus(score, teacher);
+  const [showDisq, setShowDisq] = useState(false);
+  const [reason, setReason] = useState("Time Availability");
 
   return (
     <div style={{
@@ -40,7 +47,7 @@ function DrillDown({ teacher, score, onClose }) {
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>{teacher.name}</div>
               <div style={{ fontSize: 13, color: "#64748B", marginTop: 3 }}>
-                {teacher.program} · {teacher.available ? "Available" : "Tidak Available"}
+                {teacher.program} · {teacher.identifier} · Availability: {teacher.availability}
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
@@ -57,12 +64,7 @@ function DrillDown({ teacher, score, onClose }) {
             Score Breakdown
           </div>
 
-          {disqualifiedReason ? (
-            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "14px 18px", color: "#B91C1C", fontSize: 14 }}>
-              ⛔ Auto-Disqualified: {disqualifiedReason}
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {Object.values(breakdown).map(b => (
                 <div key={b.label}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
@@ -111,11 +113,10 @@ function DrillDown({ teacher, score, onClose }) {
                 </div>
               )}
             </div>
-          )}
         </div>
 
         {!teacher.hasInspection && (
-          <div style={{ padding: "0 28px 20px" }}>
+          <div style={{ padding: "0 28px 16px" }}>
             <button style={{
               width: "100%", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A",
               borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
@@ -125,14 +126,41 @@ function DrillDown({ teacher, score, onClose }) {
           </div>
         )}
 
-        <div style={{ padding: "0 28px 24px" }}>
+        <div style={{ padding: "0 28px 24px", display: "flex", gap: 12 }}>
+          <button onClick={() => setShowDisq(true)} style={{
+            flex: 1, background: "#FEF2F2", border: "1px solid #FECACA",
+            borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, color: "#B91C1C", cursor: "pointer",
+          }}>
+            ⛔ Disqualify Teacher
+          </button>
           <button onClick={onClose} style={{
-            width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0",
+            flex: 1, background: "#F8FAFC", border: "1px solid #E2E8F0",
             borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer",
           }}>
             Tutup
           </button>
         </div>
+
+        {showDisq && (
+          <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.95)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, backdropFilter: "blur(4px)" }}>
+            <div style={{ width: "100%", background: "#FFF", borderRadius: 16, border: "1px solid #E2E8F0", padding: 24, boxShadow: "0 10px 40px rgba(0,0,0,0.1)" }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#0F172A" }}>Konfirmasi Disqualify</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748B" }}>Pilih alasan mendiskualifikasi <b>{teacher.name}</b>:</p>
+              <select value={reason} onChange={e => setReason(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid #E2E8F0", marginBottom: 20 }}>
+                <option>Time Availability</option>
+                <option>QC</option>
+                <option>Compliance</option>
+                <option>Force Majeur</option>
+                <option>Ganti Tutor 3x+</option>
+                <option>Lainnya</option>
+              </select>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => onDisqualify(teacher.id, reason)} style={{ flex: 1, background: "#EF4444", color: "#FFF", border: "none", padding: "10px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Confirm</button>
+                <button onClick={() => setShowDisq(false)} style={{ flex: 1, background: "#F1F5F9", color: "#475569", border: "none", padding: "10px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Batal</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -150,6 +178,8 @@ function EditModal({ teacher, onSave, onClose }) {
     { key: "inspection",  label: "Class Inspection (0–100)", type: "number", min: 0, max: 100 },
     { key: "compliance",  label: "Compliance (0–100)",       type: "number", min: 0, max: 100 },
     { key: "gantiTutor",  label: "Ganti Tutor Count",        type: "number", min: 0, max: 10  },
+    { key: "identifier",  label: "Identifier Tutor",         type: "select", opts: ["Baru", "Lama"] },
+    { key: "availability",label: "Tingkat Availability",     type: "select", opts: ["High", "Medium", "Moderate"] },
   ];
 
   const inputStyle = {
@@ -181,7 +211,7 @@ function EditModal({ teacher, onSave, onClose }) {
             </div>
           ))}
           <div style={{ display: "flex", gap: 12 }}>
-            {[{ k: "hasInspection", l: "Punya Inspection Data" }, { k: "available", l: "Available" }].map(({ k, l }) => (
+            {[{ k: "hasInspection", l: "Punya Inspection Data" }].map(({ k, l }) => (
               <label key={k} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: "#374151", cursor: "pointer" }}>
                 <input type="checkbox" checked={form[k]} onChange={e => set(k, e.target.checked)} style={{ width: 15, height: 15 }} />
                 {l}
@@ -199,7 +229,7 @@ function EditModal({ teacher, onSave, onClose }) {
 }
 
 function AddTeacherModal({ onSave, onClose }) {
-  const blank = { id: Date.now(), name: "", program: "IELTS", qc: 80, nps: 75, inspection: 70, compliance: 85, gantiTutor: 0, hasInspection: true, available: true, availabilitySlots: [] };
+  const blank = { id: Date.now(), name: "", program: "IELTS", qc: 80, nps: 75, inspection: 70, compliance: 85, gantiTutor: 0, hasInspection: true, identifier: "Baru", availability: "Moderate", availabilitySlots: [] };
   return <EditModal teacher={blank} onSave={onSave} onClose={onClose} />;
 }
 
@@ -207,28 +237,97 @@ function AddTeacherModal({ onSave, onClose }) {
 export default function DashboardPage({ teachers, setTeachers }) {
   const [filterProgram, setFilterProgram] = useState("All");
   const [filterStatus, setFilterStatus]   = useState("All");
-  const [filterAvail, setFilterAvail]     = useState(false);
+  const [filterReason, setFilterReason]   = useState("Semua");
+  const [filterAvail, setFilterAvail]     = useState("All");
   const [search, setSearch]           = useState("");
   const [drill, setDrill]             = useState(null);
   const [editing, setEditing]         = useState(null);
   const [adding, setAdding]           = useState(false);
   const [activeMetric, setActiveMetric]   = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const fileInputRef = useRef(null);
   
   const [matchMode, setMatchMode]         = useState(false);
   const [matchProgram, setMatchProgram]   = useState("IELTS");
   const [matchSlot, setMatchSlot]         = useState("Senin 19:00");
 
+  const downloadTemplate = () => {
+    const header = "No,Tier,Nama Tutor,Skor QC,Skor NPS,Jumlah Detractors,Jumlah Passives,Jumlah Promoters,Compliance,Ganti Tutor,Program\n";
+    const blob = new Blob([header], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "Template_Import_Teacher.csv";
+    link.click();
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const parsed = results.data;
+        const ready = [];
+        const errors = [];
+        parsed.forEach((row, idx) => {
+          try {
+            const p = String(row["Program"] || "").trim();
+            const name = String(row["Nama Tutor"] || "").trim();
+            if (!p || !name) throw new Error("Program atau Nama Tutor kosong");
+            
+            let qcRaw = row["Skor QC"];
+            let qc = (qcRaw === null || qcRaw === undefined || String(qcRaw).trim() === "" || Number(qcRaw) === 0) ? null : Number(qcRaw);
+
+            const d = Number(row["Jumlah Detractors"]) || 0;
+            const pa = Number(row["Jumlah Passives"]) || 0;
+            const pr = Number(row["Jumlah Promoters"]) || 0;
+            const total = d + pa + pr;
+            let nps = 0;
+            if (total > 0) {
+              const rawNps = ((pr - d) / total) * 100;
+              nps = Math.round((rawNps + 100) / 2);
+            }
+
+            const comp = Number(row["Compliance"]) || 0;
+            const ganti = Number(row["Ganti Tutor"]) || 0;
+
+            ready.push({
+              id: Date.now() + idx,
+              name,
+              program: p,
+              qc,
+              nps,
+              compliance: comp,
+              gantiTutor: ganti,
+              hasInspection: false,
+              inspection: null,
+              availability: "Moderate",
+              identifier: "Baru",
+              availabilitySlots: []
+            });
+          } catch(err) {
+            errors.push(`Baris ${idx + 2}: ${err.message}`);
+          }
+        });
+        setImportPreview({ ready, errors });
+      }
+    });
+    e.target.value = null;
+  };
+
   const scored = useMemo(() =>
     teachers.map(t => {
       const score = calcScore(t);
-      return { ...t, score, status: getStatus(score.final, t.gantiTutor, t.available) };
+      return { ...t, score, status: getStatus(score, t) };
     }).sort((a, b) => b.score.final - a.score.final),
     [teachers]
   );
 
   const filtered = useMemo(() => scored.filter(t => {
+    if (t.identifier === "Baru") return false;
+    if (t.isDisqualified) return activeMetric === "Disqualified";
     if (matchMode) {
-      if (t.status === "Disqualified") return false;
       if (t.program !== matchProgram) return false;
       if (!t.availabilitySlots?.includes(matchSlot)) return false;
       return true;
@@ -236,18 +335,50 @@ export default function DashboardPage({ teachers, setTeachers }) {
     if (filterProgram !== "All" && t.program !== filterProgram) return false;
     const fs = activeMetric || filterStatus;
     if (fs !== "All" && t.status !== fs) return false;
-    if (filterAvail && !t.available) return false;
+    if (filterAvail !== "All" && t.availability !== filterAvail) return false;
     if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }), [scored, matchMode, matchProgram, matchSlot, filterProgram, filterStatus, filterAvail, search, activeMetric]);
 
   const counts = useMemo(() => {
-    const c = { "Top Performer": 0, Eligible: 0, Watch: 0, Disqualified: 0 };
-    scored.forEach(t => c[t.status]++);
+    const c = { "Top Performer": 0, Eligible: 0, Watch: 0, "Perlu Review": 0, Disqualified: 0 };
+    scored.forEach(t => {
+      if (t.isDisqualified) {
+        c["Disqualified"]++;
+      } else if (c[t.status] !== undefined) {
+        c[t.status]++;
+      }
+    });
     return c;
   }, [scored]);
 
-  const barMax = useMemo(() => Math.max(...scored.map(t => t.score.final), 1), [scored]);
+  const activeCount = useMemo(() => Object.keys(counts).filter(k => k !== "Disqualified").reduce((a, b) => a + counts[b], 0), [counts]);
+
+  const donutData = useMemo(() => [
+    { name: "Top Performer", value: counts["Top Performer"], color: STATUS_CONFIG["Top Performer"].dot, status: "Top Performer" },
+    { name: "Eligible",      value: counts["Eligible"],      color: STATUS_CONFIG["Eligible"].dot, status: "Eligible" },
+    { name: "Watch",         value: counts["Watch"],         color: STATUS_CONFIG["Watch"].dot, status: "Watch" },
+    { name: "Perlu Review",  value: counts["Perlu Review"],  color: STATUS_CONFIG["Perlu Review"].dot, status: "Perlu Review" },
+  ].filter(d => d.value > 0), [counts]);
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const pct = activeCount > 0 ? Math.round((data.value / activeCount) * 100) : 0;
+      return (
+        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", padding: "12px 16px", borderRadius: 12, boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: data.color }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{STATUS_CONFIG[data.status].label}</span>
+          </div>
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            <span style={{ fontWeight: 600, color: "#0F172A" }}>{data.value}</span> teachers ({pct}%)
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   const updateTeacher = (updated) => setTeachers(ts => ts.map(t => t.id === updated.id ? updated : t));
   const addTeacher    = (t)       => setTeachers(ts => [...ts, { ...t, id: Date.now() }]);
@@ -264,44 +395,104 @@ export default function DashboardPage({ teachers, setTeachers }) {
               Data per {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
             </div>
           </div>
-          <button onClick={() => setAdding(true)} style={{
-            background: "#6366F1", color: "#FFF", border: "none", borderRadius: 10,
-            padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 7,
-          }}>
-            + Tambah Teacher
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={downloadTemplate} style={{
+              background: "#F1F5F9", color: "#475569", border: "1.5px solid #E2E8F0", borderRadius: 10,
+              padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
+            }}>Download Template CSV</button>
+            
+            <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
+            <button onClick={() => fileInputRef.current?.click()} style={{
+              background: "#10B981", color: "#FFF", border: "none", borderRadius: 10,
+              padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
+            }}>Import CSV</button>
+
+            <button onClick={() => setAdding(true)} style={{
+              background: "#6366F1", color: "#FFF", border: "none", borderRadius: 10,
+              padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
+              boxShadow: "0 4px 12px rgba(99,102,241,0.25)"
+            }}>+ Tambah Teacher</button>
+          </div>
         </div>
 
         {/* Metric Cards */}
         <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-          {["Top Performer", "Eligible", "Watch", "Disqualified"].map(s => (
-            <MetricCard key={s} statusKey={s} count={counts[s]}
+          {["Top Performer", "Eligible", "Watch", "Perlu Review", "Disqualified"].map(s => (
+            <MetricCard key={s} statusKey={s} count={counts[s]} total={teachers.length}
               active={activeMetric === s}
               onClick={() => setActiveMetric(activeMetric === s ? null : s)} />
           ))}
         </div>
 
-        {/* Chart */}
-        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "22px 24px", marginBottom: 24 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#94A3B8", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 18 }}>
-            Composite Score — All Teachers
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            {scored.map(t => (
-              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 140, fontSize: 12, color: "#374151", fontWeight: 500, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                <div style={{ flex: 1, height: 20, background: "#F1F5F9", borderRadius: 99, position: "relative", overflow: "hidden" }}>
-                  <div style={{
-                    position: "absolute", left: 0, top: 0, height: "100%",
-                    width: `${(t.score.final / barMax) * 100}%`,
-                    background: scoreColor(t.score.final), borderRadius: 99,
-                    transition: "width 0.5s ease",
-                  }} />
+        {/* Pool Health & Spotlight */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#0F172A", marginBottom: 16 }}>Pool Health & Top Spotlight</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24 }}>
+            
+            {/* Donut Chart */}
+            <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 220, position: "relative" }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={donutData} innerRadius={70} outerRadius={100} paddingAngle={4} dataKey="value" stroke="none">
+                      {donutData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ position: "absolute", textAlign: "center", pointerEvents: "none" }}>
+                  <div style={{ fontSize: 32, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{activeCount}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>Teachers in pool</div>
                 </div>
-                <div style={{ width: 32, fontSize: 12, fontWeight: 700, color: scoreColor(t.score.final), textAlign: "right", flexShrink: 0 }}>{t.score.final}</div>
               </div>
-            ))}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+                {["Top Performer", "Eligible", "Watch", "Perlu Review"].map(s => {
+                  const val = counts[s];
+                  const pct = activeCount > 0 ? Math.round((val / activeCount) * 100) : 0;
+                  return (
+                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: STATUS_CONFIG[s].dot, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>{s}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{val} <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: 11 }}>({pct}%)</span></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Top 5 Spotlight */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {scored.filter(t => !t.isDisqualified).slice(0, 5).map((t, idx) => (
+                <div key={t.id} onClick={() => document.getElementById(`row-${t.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                     style={{ 
+                       background: idx === 0 ? "linear-gradient(to right, #EEF2FF, #FFF)" : "#FFF",
+                       border: idx === 0 ? "1.5px solid #C7D2FE" : "1px solid #E2E8F0", 
+                       borderRadius: 14, padding: "16px 20px", cursor: "pointer",
+                       display: "flex", alignItems: "center", gap: 16, transition: "transform 0.15s",
+                       boxShadow: idx === 0 ? "0 4px 12px rgba(79,70,229,0.06)" : "none"
+                     }}
+                     onMouseEnter={e => e.currentTarget.style.transform = "translateX(6px)"}
+                     onMouseLeave={e => e.currentTarget.style.transform = "translateX(0)"}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: idx === 0 ? "#4F46E5" : "#94A3B8", width: 28, textAlign: "center" }}>
+                    #{idx + 1}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: 8 }}>
+                      {t.name}
+                      {idx === 0 && <span style={{ fontSize: 14 }}>👑</span>}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#64748B", marginTop: 2 }}>{t.program}</div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final), lineHeight: 1 }}>{t.score.final}</div>
+                    <StatusBadge status={t.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            
           </div>
         </div>
 
@@ -342,13 +533,6 @@ export default function DashboardPage({ teachers, setTeachers }) {
           </div>
         </div>
 
-        {matchMode && (
-          <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 8, height: 8, background: "#22C55E", borderRadius: "50%" }}></span>
-            {filtered.length} teacher available untuk {matchProgram}, {matchSlot} — diurut by score
-          </div>
-        )}
-
         {/* Filters */}
         {!matchMode && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
@@ -365,16 +549,22 @@ export default function DashboardPage({ teachers, setTeachers }) {
               color: filterProgram === p ? "#4F46E5" : "#64748B",
             }}>{p === "All" ? "Semua Program" : p}</button>
           ))}
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#475569", cursor: "pointer", padding: "8px 12px", border: filterAvail ? "1.5px solid #6366F1" : "1.5px solid #E2E8F0", borderRadius: 9, background: filterAvail ? "#EEF2FF" : "#FFF" }}>
-            <input type="checkbox" checked={filterAvail} onChange={e => setFilterAvail(e.target.checked)} style={{ width: 14, height: 14 }} />
-            Available Only
-          </label>
-          {(filterProgram !== "All" || filterStatus !== "All" || filterAvail || search || activeMetric) && (
-            <button onClick={() => { setFilterProgram("All"); setFilterStatus("All"); setFilterAvail(false); setSearch(""); setActiveMetric(null); }}
-              style={{ padding: "8px 14px", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1.5px solid #FECACA", background: "#FEF2F2", color: "#B91C1C" }}>
-              Reset Filter
-            </button>
-          )}
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setFilterReason("Semua"); }}
+                  style={{ padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", minWidth: 140 }}>
+            <option value="All">Semua Status</option>
+            <option value="Top Performer">Top Performer</option>
+            <option value="Eligible">Eligible</option>
+            <option value="Watch">Watch</option>
+            <option value="Perlu Review">Perlu Review</option>
+          </select>
+          <select value={filterAvail} onChange={e => setFilterAvail(e.target.value)}
+                  style={{ padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", minWidth: 160 }}>
+            <option value="All">Semua Availability</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Moderate">Moderate</option>
+            <option value="Low">Low</option>
+          </select>
         </div>
         )}
 
@@ -383,16 +573,14 @@ export default function DashboardPage({ teachers, setTeachers }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 900 }}>
             <thead>
               <tr style={{ background: "#F8FAFC", borderBottom: "1.5px solid #E2E8F0" }}>
-                {["Rank", "Nama Teacher", "Program", "QC", "NPS", "Inspection", "Compliance", "Penalty", "Final Score", "Status", ""].map(h => (
+                {["Rank", "Nama Teacher", "Program", "Availability", "QC", "NPS", "Inspection", "Compliance", "Penalty", "Final Score", "Status", ""].map(h => (
                   <th key={h} style={{ padding: "12px 16px", textAlign: h === "Final Score" || h === "Rank" ? "center" : "left", fontWeight: 700, fontSize: 11, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan={11} style={{ textAlign: "center", padding: "40px 0", color: "#94A3B8", fontSize: 14 }}>Tidak ada teacher yang sesuai filter.</td></tr>
-              ) : filtered.map((t, i) => (
-                <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9" }}
+              {filtered.map((t, i) => (
+                <tr key={t.id} id={`row-${t.id}`} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.2s" }}
                   onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>#{i + 1}</td>
@@ -404,6 +592,9 @@ export default function DashboardPage({ teachers, setTeachers }) {
                   </td>
                   <td style={{ padding: "14px 16px" }}>
                     <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 600 }}>{t.program}</span>
+                  </td>
+                  <td style={{ padding: "14px 16px", fontSize: 12, fontWeight: 600, color: t.availability === "High" ? "#15803D" : t.availability === "Medium" ? "#1D4ED8" : t.availability === "Moderate" ? "#B45309" : "#B91C1C" }}>
+                    {t.availability || "—"}
                   </td>
                   <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.qc} color="#6366F1" /></td>
                   <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.nps} color="#8B5CF6" /></td>
@@ -428,10 +619,10 @@ export default function DashboardPage({ teachers, setTeachers }) {
                     })()}
                   </td>
                   <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                    {t.score.disqualifiedReason ? (
+                    {t.isDisqualified ? (
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                         <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>0</span>
-                        <span style={{ fontSize: 10, background: "#FEF2F2", color: "#B91C1C", padding: "3px 6px", borderRadius: 4, fontWeight: 600, marginTop: 4, whiteSpace: "nowrap" }}>Excluded: {t.score.disqualifiedReason}</span>
+                        <span style={{ fontSize: 10, background: "#FEF2F2", color: "#B91C1C", padding: "3px 6px", borderRadius: 4, fontWeight: 600, marginTop: 4, whiteSpace: "nowrap" }}>Excluded: {t.disqualifiedReason}</span>
                       </div>
                     ) : (
                       <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>{t.score.final}</span>
@@ -440,7 +631,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
                   <td style={{ padding: "14px 16px" }}><StatusBadge status={t.status} small /></td>
                   <td style={{ padding: "14px 16px" }}>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => setDrill(t)} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E0E7FF", background: "#EEF2FF", color: "#4F46E5", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Detail</button>
+                      <button onClick={() => setDrill({ teacher: t, score: t.score })} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E0E7FF", background: "#EEF2FF", color: "#4F46E5", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Detail</button>
                       <button onClick={() => setEditing(t)} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E2E8F0", background: "#F8FAFC", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Edit</button>
                       <button onClick={() => removeTeacher(t.id)} style={{ padding: "5px 9px", borderRadius: 7, border: "1.5px solid #FECACA", background: "#FEF2F2", color: "#B91C1C", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>×</button>
                     </div>
@@ -455,9 +646,38 @@ export default function DashboardPage({ teachers, setTeachers }) {
           Menampilkan {filtered.length} dari {teachers.length} teacher · Klik metric card untuk filter cepat · Klik Detail untuk breakdown score
         </div>
 
-      {drill    && <DrillDown teacher={drill} score={drill.score} onClose={() => setDrill(null)} />}
-      {editing  && <EditModal teacher={editing} onSave={updateTeacher} onClose={() => setEditing(null)} />}
-      {adding   && <AddTeacherModal onSave={addTeacher} onClose={() => setAdding(false)} />}
+      {drill && (
+        <DrillDown teacher={drill.teacher} score={drill.score} onClose={() => setDrill(null)} 
+          onDisqualify={(id, reason) => {
+            updateTeacher({ ...drill.teacher, isDisqualified: true, disqualifiedReason: reason, disqualifiedAt: new Date().toISOString() });
+            setDrill(null);
+          }}
+        />
+      )}{editing  && <EditModal teacher={editing} onSave={updateTeacher} onClose={() => setEditing(null)} />}
+      {adding   && <AddTeacherModal onSave={t => setTeachers([...teachers, t])} onClose={() => setAdding(false)} />}
+      
+      {importPreview && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: "#FFF", borderRadius: 20, width: "100%", maxWidth: 500, padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
+            <h2 style={{ margin: "0 0 16px", fontSize: 18, color: "#0F172A" }}>Preview Import CSV</h2>
+            <div style={{ background: "#F1F5F9", padding: 16, borderRadius: 12, marginBottom: 16 }}>
+              <div style={{ color: "#16A34A", fontWeight: 700, marginBottom: 8 }}>✅ {importPreview.ready.length} Teacher siap di-import</div>
+              {importPreview.errors.length > 0 && (
+                <div style={{ color: "#DC2626", fontWeight: 600, fontSize: 13, marginTop: 8 }}>
+                  ❌ {importPreview.errors.length} Baris gagal diproses (error/kosong)
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setImportPreview(null)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1.5px solid #E2E8F0", background: "#F8FAFC", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Batal</button>
+              <button disabled={importPreview.ready.length === 0} onClick={() => {
+                setTeachers([...teachers, ...importPreview.ready]);
+                setImportPreview(null);
+              }} style={{ flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: importPreview.ready.length === 0 ? "#94A3B8" : "#6366F1", color: "#FFF", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Konfirmasi Import</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

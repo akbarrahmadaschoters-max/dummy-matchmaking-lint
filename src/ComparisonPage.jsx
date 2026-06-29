@@ -72,18 +72,16 @@ export default function ComparisonPage({ teachers }) {
     if (suggested) { setIdA(suggested[0]); setIdB(suggested[1]); }
   };
 
-  // Radar data
   const radarData = FACTORS.map(f => ({
     factor: f.label,
-    A: teacherA ? (f.key === "inspection" && !teacherA.hasInspection ? null : teacherA[f.key] || 0) : 0,
-    B: teacherB ? (f.key === "inspection" && !teacherB.hasInspection ? null : teacherB[f.key] || 0) : 0,
+    A: teacherA ? teacherA[f.key] || 0 : 0,
+    B: teacherB ? teacherB[f.key] || 0 : 0,
   }));
 
-  // Bar data
   const barData = FACTORS.map(f => ({
     factor: f.label,
-    [teacherA?.name || "A"]: teacherA ? (f.key === "inspection" && !teacherA.hasInspection ? null : teacherA[f.key] || 0) : 0,
-    [teacherB?.name || "B"]: teacherB ? (f.key === "inspection" && !teacherB.hasInspection ? null : teacherB[f.key] || 0) : 0,
+    [teacherA?.name || "A"]: teacherA ? teacherA[f.key] || 0 : 0,
+    [teacherB?.name || "B"]: teacherB ? teacherB[f.key] || 0 : 0,
   }));
 
   // Recommendation logic
