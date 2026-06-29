@@ -71,6 +71,19 @@ function DrillDown({ teacher, score, onClose }) {
                       {b.label === "Class Inspection" && b.val === null && (
                         <span style={{ marginLeft: 8, fontSize: 11, background: "#FEF3C7", color: "#92400E", borderRadius: 6, padding: "1px 7px", fontWeight: 600 }}>Belum Diinspeksi</span>
                       )}
+                      {b.label === "Compliance" && b.val !== null && b.val < 100 && (
+                        <span style={{ marginLeft: 8, fontSize: 11, color: "#B91C1C", fontWeight: 600 }}>
+                          (100 {(() => {
+                            let diff = 100 - b.val;
+                            let parts = [];
+                            if (diff >= 20) { parts.push("− 20"); diff -= 20; }
+                            while (diff >= 8) { parts.push("− 8"); diff -= 8; }
+                            while (diff >= 3) { parts.push("− 3"); diff -= 3; }
+                            if (diff > 0) parts.push(`− ${diff}`);
+                            return parts.join(" ") + ` = ${b.val}`;
+                          })()})
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 12, color: "#94A3B8" }}>
                       {b.val !== null ? `${b.val} × ${Math.round(b.weight * 100)}%` : "—"}
@@ -186,7 +199,7 @@ function EditModal({ teacher, onSave, onClose }) {
 }
 
 function AddTeacherModal({ onSave, onClose }) {
-  const blank = { id: Date.now(), name: "", program: "IELTS", qc: 80, nps: 75, inspection: 70, compliance: 85, gantiTutor: 0, hasInspection: true, available: true };
+  const blank = { id: Date.now(), name: "", program: "IELTS", qc: 80, nps: 75, inspection: 70, compliance: 85, gantiTutor: 0, hasInspection: true, available: true, availabilitySlots: [] };
   return <EditModal teacher={blank} onSave={onSave} onClose={onClose} />;
 }
 
@@ -200,6 +213,10 @@ export default function DashboardPage({ teachers, setTeachers }) {
   const [editing, setEditing]         = useState(null);
   const [adding, setAdding]           = useState(false);
   const [activeMetric, setActiveMetric]   = useState(null);
+  
+  const [matchMode, setMatchMode]         = useState(false);
+  const [matchProgram, setMatchProgram]   = useState("IELTS");
+  const [matchSlot, setMatchSlot]         = useState("Senin 19:00");
 
   const scored = useMemo(() =>
     teachers.map(t => {
@@ -210,13 +227,19 @@ export default function DashboardPage({ teachers, setTeachers }) {
   );
 
   const filtered = useMemo(() => scored.filter(t => {
+    if (matchMode) {
+      if (t.status === "Disqualified") return false;
+      if (t.program !== matchProgram) return false;
+      if (!t.availabilitySlots?.includes(matchSlot)) return false;
+      return true;
+    }
     if (filterProgram !== "All" && t.program !== filterProgram) return false;
     const fs = activeMetric || filterStatus;
     if (fs !== "All" && t.status !== fs) return false;
     if (filterAvail && !t.available) return false;
     if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  }), [scored, filterProgram, filterStatus, filterAvail, search, activeMetric]);
+  }), [scored, matchMode, matchProgram, matchSlot, filterProgram, filterStatus, filterAvail, search, activeMetric]);
 
   const counts = useMemo(() => {
     const c = { "Top Performer": 0, Eligible: 0, Watch: 0, Disqualified: 0 };
@@ -237,6 +260,9 @@ export default function DashboardPage({ teachers, setTeachers }) {
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Teacher Pool Overview</h1>
             <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Ranked list · Weighted scoring engine · Real-time flags</p>
+            <div style={{ marginTop: 8, fontSize: 11, fontWeight: 600, color: "#4F46E5", background: "#EEF2FF", padding: "3px 8px", borderRadius: 6, display: "inline-block" }}>
+              Data per {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+            </div>
           </div>
           <button onClick={() => setAdding(true)} style={{
             background: "#6366F1", color: "#FFF", border: "none", borderRadius: 10,
@@ -279,7 +305,52 @@ export default function DashboardPage({ teachers, setTeachers }) {
           </div>
         </div>
 
+        {/* Match Mode Panel */}
+        <div style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1.5px solid #C7D2FE", borderRadius: 16, padding: "20px 24px", marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <span style={{ fontSize: 22 }}>🎯</span>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#3730A3" }}>Match Mode</div>
+              <div style={{ fontSize: 13, color: "#6366F1", marginTop: 2 }}>Masukkan kebutuhan student untuk mencari teacher terbaik yang available</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", display: "block", marginBottom: 6 }}>Program</label>
+              <select value={matchProgram} onChange={e => setMatchProgram(e.target.value)} disabled={matchMode} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #C7D2FE", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF" }}>
+                <option>IELTS</option>
+                <option>SAT</option>
+              </select>
+            </div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", display: "block", marginBottom: 6 }}>Slot Waktu</label>
+              <select value={matchSlot} onChange={e => setMatchSlot(e.target.value)} disabled={matchMode} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #C7D2FE", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF" }}>
+                <option>Senin 19:00</option>
+                <option>Selasa 19:00</option>
+                <option>Rabu 19:00</option>
+                <option>Kamis 16:00</option>
+                <option>Jumat 16:00</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {!matchMode ? (
+                <button onClick={() => setMatchMode(true)} style={{ padding: "11px 24px", background: "#4F46E5", color: "#FFF", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cari Match</button>
+              ) : (
+                <button onClick={() => { setMatchMode(false); setFilterProgram("All"); setFilterStatus("All"); setFilterAvail(false); setSearch(""); setActiveMetric(null); }} style={{ padding: "11px 24px", background: "#FFF", color: "#B91C1C", border: "1.5px solid #FECACA", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Reset Pool</button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {matchMode && (
+          <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 8, height: 8, background: "#22C55E", borderRadius: "50%" }}></span>
+            {filtered.length} teacher available untuk {matchProgram}, {matchSlot} — diurut by score
+          </div>
+        )}
+
         {/* Filters */}
+        {!matchMode && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama teacher..."
@@ -305,6 +376,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
             </button>
           )}
         </div>
+        )}
 
         {/* Table */}
         <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "auto" }}>
@@ -326,8 +398,8 @@ export default function DashboardPage({ teachers, setTeachers }) {
                   <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>#{i + 1}</td>
                   <td style={{ padding: "14px 16px" }}>
                     <div style={{ fontWeight: 600, color: "#0F172A" }}>{t.name}</div>
-                    {t.gantiTutor === 2 && (
-                      <div style={{ fontSize: 10, color: "#B45309", fontWeight: 600, marginTop: 2 }}>⚠ Pre-disqualifier warning</div>
+                    {(t.gantiTutor === 1 || t.gantiTutor === 2) && (
+                      <div style={{ fontSize: 10, color: "#B45309", fontWeight: 600, marginTop: 2 }}>⚠ Flagged</div>
                     )}
                   </td>
                   <td style={{ padding: "14px 16px" }}>
@@ -343,13 +415,27 @@ export default function DashboardPage({ teachers, setTeachers }) {
                   </td>
                   <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.compliance} color="#10B981" /></td>
                   <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                    {t.gantiTutor >= 1
-                      ? <span style={{ color: "#C2410C", fontWeight: 700, fontSize: 12 }}>−{t.gantiTutor >= 3 ? "DQ" : "10"}</span>
-                      : <span style={{ color: "#94A3B8", fontSize: 12 }}>—</span>
-                    }
+                    {(() => {
+                      const c = t.gantiTutor;
+                      const bg = c === 0 ? "#F1F5F9" : c === 1 ? "#FEF3C7" : c === 2 ? "#FFEDD5" : "#FEF2F2";
+                      const text = c === 0 ? "#64748B" : c === 1 ? "#D97706" : c === 2 ? "#EA580C" : "#DC2626";
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                          <span style={{ background: bg, color: text, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{c}/3</span>
+                          {c === 1 || c === 2 ? <span style={{ color: "#C2410C", fontWeight: 700, fontSize: 11 }}>−10</span> : null}
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                    <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>{t.score.final}</span>
+                    {t.score.disqualifiedReason ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>0</span>
+                        <span style={{ fontSize: 10, background: "#FEF2F2", color: "#B91C1C", padding: "3px 6px", borderRadius: 4, fontWeight: 600, marginTop: 4, whiteSpace: "nowrap" }}>Excluded: {t.score.disqualifiedReason}</span>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>{t.score.final}</span>
+                    )}
                   </td>
                   <td style={{ padding: "14px 16px" }}><StatusBadge status={t.status} small /></td>
                   <td style={{ padding: "14px 16px" }}>

@@ -75,15 +75,15 @@ export default function ComparisonPage({ teachers }) {
   // Radar data
   const radarData = FACTORS.map(f => ({
     factor: f.label,
-    A: teacherA ? (f.key === "inspection" && !teacherA.hasInspection ? 0 : teacherA[f.key] || 0) : 0,
-    B: teacherB ? (f.key === "inspection" && !teacherB.hasInspection ? 0 : teacherB[f.key] || 0) : 0,
+    A: teacherA ? (f.key === "inspection" && !teacherA.hasInspection ? null : teacherA[f.key] || 0) : 0,
+    B: teacherB ? (f.key === "inspection" && !teacherB.hasInspection ? null : teacherB[f.key] || 0) : 0,
   }));
 
   // Bar data
   const barData = FACTORS.map(f => ({
     factor: f.label,
-    [teacherA?.name || "A"]: teacherA ? (f.key === "inspection" && !teacherA.hasInspection ? 0 : teacherA[f.key] || 0) : 0,
-    [teacherB?.name || "B"]: teacherB ? (f.key === "inspection" && !teacherB.hasInspection ? 0 : teacherB[f.key] || 0) : 0,
+    [teacherA?.name || "A"]: teacherA ? (f.key === "inspection" && !teacherA.hasInspection ? null : teacherA[f.key] || 0) : 0,
+    [teacherB?.name || "B"]: teacherB ? (f.key === "inspection" && !teacherB.hasInspection ? null : teacherB[f.key] || 0) : 0,
   }));
 
   // Recommendation logic
@@ -96,8 +96,9 @@ export default function ComparisonPage({ teachers }) {
 
     let reasons = [];
     FACTORS.forEach(f => {
-      const wv = f.key === "inspection" && !winner.hasInspection ? 0 : winner[f.key] || 0;
-      const lv = f.key === "inspection" && !loser.hasInspection ? 0 : loser[f.key] || 0;
+      if (f.key === "inspection" && (!winner.hasInspection || !loser.hasInspection)) return;
+      const wv = winner[f.key] || 0;
+      const lv = loser[f.key] || 0;
       if (wv > lv + 5) reasons.push(`${f.label} lebih unggul (${wv} vs ${lv})`);
     });
     if (winner.gantiTutor < loser.gantiTutor) reasons.push(`riwayat ganti tutor lebih bersih (${winner.gantiTutor}× vs ${loser.gantiTutor}×)`);
@@ -234,7 +235,7 @@ export default function ComparisonPage({ teachers }) {
             </div>
             <StatRow label="QC Score" a={teacherA.qc} b={teacherB.qc} />
             <StatRow label="NPS Tutor" a={teacherA.nps} b={teacherB.nps} />
-            <StatRow label="Inspection" a={teacherA.hasInspection ? teacherA.inspection : 0} b={teacherB.hasInspection ? teacherB.inspection : 0} />
+            <StatRow label="Inspection" a={teacherA.hasInspection ? teacherA.inspection : "N/A"} b={teacherB.hasInspection ? teacherB.inspection : "N/A"} />
             <StatRow label="Compliance" a={teacherA.compliance} b={teacherB.compliance} />
             <StatRow label="Ganti Tutor" a={teacherA.gantiTutor} b={teacherB.gantiTutor} suffix="×" />
             <div style={{ display: "flex", alignItems: "center", marginTop: 8, paddingTop: 8 }}>

@@ -1,15 +1,15 @@
 // ─── Dummy Data ────────────────────────────────────────────────
 export const INITIAL_TEACHERS = [
-  { id: 1, name: "Rizky Aditya", program: "IELTS", qc: 92, nps: 88, inspection: 85, compliance: 95, gantiTutor: 0, hasInspection: true, available: true },
-  { id: 2, name: "Salsabila Putri", program: "IELTS", qc: 85, nps: 91, inspection: 80, compliance: 88, gantiTutor: 1, hasInspection: true, available: true },
-  { id: 3, name: "Dimas Pratama", program: "SAT", qc: 78, nps: 72, inspection: null, compliance: 90, gantiTutor: 0, hasInspection: false, available: true },
-  { id: 4, name: "Nadia Kusuma", program: "IELTS", qc: 65, nps: 70, inspection: 60, compliance: 75, gantiTutor: 2, hasInspection: true, available: true },
-  { id: 5, name: "Farhan Haikal", program: "SAT", qc: 55, nps: 48, inspection: 50, compliance: 60, gantiTutor: 1, hasInspection: true, available: false },
-  { id: 6, name: "Tiara Anggraini", program: "IELTS", qc: 90, nps: 85, inspection: null, compliance: 92, gantiTutor: 0, hasInspection: false, available: true },
-  { id: 7, name: "Bimo Santoso", program: "SAT", qc: 38, nps: 35, inspection: 40, compliance: 45, gantiTutor: 3, hasInspection: true, available: true },
-  { id: 8, name: "Kirana Dewi", program: "IELTS", qc: 82, nps: 79, inspection: 75, compliance: 85, gantiTutor: 0, hasInspection: true, available: true },
-  { id: 9, name: "Yusuf Hamdani", program: "SAT", qc: 70, nps: 66, inspection: 70, compliance: 80, gantiTutor: 1, hasInspection: true, available: true },
-  { id: 10, name: "Mega Wulandari", program: "IELTS", qc: 45, nps: 52, inspection: 48, compliance: 55, gantiTutor: 2, hasInspection: true, available: true },
+  { id: 1, name: "Rizky Aditya", program: "IELTS", qc: 92, nps: 88, inspection: 85, compliance: 95, gantiTutor: 0, hasInspection: true, available: true, availabilitySlots: ["Senin 19:00", "Selasa 19:00"] },
+  { id: 2, name: "Salsabila Putri", program: "IELTS", qc: 85, nps: 91, inspection: 80, compliance: 88, gantiTutor: 1, hasInspection: true, available: true, availabilitySlots: ["Selasa 19:00", "Rabu 19:00"] },
+  { id: 3, name: "Dimas Pratama", program: "SAT", qc: 78, nps: 72, inspection: null, compliance: 90, gantiTutor: 0, hasInspection: false, available: true, availabilitySlots: ["Senin 19:00", "Kamis 16:00"] },
+  { id: 4, name: "Nadia Kusuma", program: "IELTS", qc: 65, nps: 70, inspection: 60, compliance: 75, gantiTutor: 2, hasInspection: true, available: true, availabilitySlots: ["Jumat 16:00"] },
+  { id: 5, name: "Farhan Haikal", program: "SAT", qc: 55, nps: 48, inspection: 50, compliance: 60, gantiTutor: 1, hasInspection: true, available: false, availabilitySlots: [] },
+  { id: 6, name: "Tiara Anggraini", program: "IELTS", qc: 90, nps: 85, inspection: null, compliance: 92, gantiTutor: 0, hasInspection: false, available: true, availabilitySlots: ["Selasa 19:00", "Kamis 16:00"] },
+  { id: 7, name: "Bimo Santoso", program: "SAT", qc: 38, nps: 35, inspection: 40, compliance: 45, gantiTutor: 3, hasInspection: true, available: true, availabilitySlots: ["Rabu 19:00"] },
+  { id: 8, name: "Kirana Dewi", program: "IELTS", qc: 82, nps: 79, inspection: 75, compliance: 85, gantiTutor: 0, hasInspection: true, available: true, availabilitySlots: ["Senin 19:00", "Rabu 19:00"] },
+  { id: 9, name: "Yusuf Hamdani", program: "SAT", qc: 70, nps: 66, inspection: 70, compliance: 80, gantiTutor: 1, hasInspection: true, available: true, availabilitySlots: ["Selasa 19:00"] },
+  { id: 10, name: "Mega Wulandari", program: "IELTS", qc: 45, nps: 52, inspection: 48, compliance: 55, gantiTutor: 2, hasInspection: true, available: true, availabilitySlots: ["Jumat 16:00"] },
 ];
 
 // ─── Scoring Engine ────────────────────────────────────────────
