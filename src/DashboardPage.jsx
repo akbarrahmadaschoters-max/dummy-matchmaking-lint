@@ -4,6 +4,8 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { INITIAL_TEACHERS, calcScore, getStatus, STATUS_CONFIG, scoreColor } from "./scoring.js";
 import { StatusBadge, ScoreBar } from "./components.jsx";
 import { useGoogleLogin } from "@react-oauth/google";
+import { db } from "./firebase.js";
+import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
 
 // ─── Dashboard-specific sub-components ─────────────────────────
 function MetricCard({ statusKey, count, total, onClick, active }) {
@@ -325,6 +327,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
   const [adding, setAdding]           = useState(false);
   const [activeMetric, setActiveMetric]   = useState(null);
   const [importPreview, setImportPreview] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
   const [gToken, setGToken] = useState(null);
   const fileInputRef = useRef(null);
   
@@ -374,7 +377,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
             const ganti = Number(row["Ganti Tutor"]) || 0;
 
             ready.push({
-              id: Date.now() + idx,
+              id: (Date.now() + idx).toString(),
               name,
               program: p,
               qc,
@@ -461,9 +464,33 @@ export default function DashboardPage({ teachers, setTeachers }) {
     return null;
   };
 
-  const updateTeacher = (updated) => setTeachers(ts => ts.map(t => t.id === updated.id ? updated : t));
-  const addTeacher    = (t)       => setTeachers(ts => [...ts, { ...t, id: Date.now() }]);
-  const removeTeacher = (id)      => setTeachers(ts => ts.filter(t => t.id !== id));
+  const updateTeacher = async (updated) => {
+    try {
+      await setDoc(doc(db, "teachers", updated.id.toString()), updated, { merge: true });
+    } catch (e) {
+      console.error("Error updating teacher:", e);
+      alert("Gagal update: " + e.message);
+    }
+  };
+
+  const addTeacher = async (t) => {
+    try {
+      const id = Date.now().toString();
+      await setDoc(doc(db, "teachers", id), { ...t, id });
+    } catch (e) {
+      console.error("Error adding teacher:", e);
+      alert("Gagal menambah: " + e.message);
+    }
+  };
+
+  const removeTeacher = async (id) => {
+    try {
+      await deleteDoc(doc(db, "teachers", id.toString()));
+    } catch (e) {
+      console.error("Error removing teacher:", e);
+      alert("Gagal menghapus: " + e.message);
+    }
+  };
 
   return (
     <div>
@@ -735,8 +762,9 @@ export default function DashboardPage({ teachers, setTeachers }) {
           }}
           gToken={gToken} setGToken={setGToken}
         />
-      )}{editing  && <EditModal teacher={editing} onSave={updateTeacher} onClose={() => setEditing(null)} />}
-      {adding   && <AddTeacherModal onSave={t => setTeachers([...teachers, t])} onClose={() => setAdding(false)} />}
+      )}
+      {editing && <EditModal teacher={editing} onSave={updateTeacher} onClose={() => setEditing(null)} />}
+      {adding && <AddTeacherModal onSave={addTeacher} onClose={() => setAdding(false)} />}
       
       {importPreview && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -752,10 +780,38 @@ export default function DashboardPage({ teachers, setTeachers }) {
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setImportPreview(null)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1.5px solid #E2E8F0", background: "#F8FAFC", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Batal</button>
-              <button disabled={importPreview.ready.length === 0} onClick={() => {
-                setTeachers([...teachers, ...importPreview.ready]);
-                setImportPreview(null);
-              }} style={{ flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: importPreview.ready.length === 0 ? "#94A3B8" : "#6366F1", color: "#FFF", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Konfirmasi Import</button>
+              <button disabled={importPreview.ready.length === 0 || isImporting} onClick={async () => {
+                setIsImporting(true);
+                try {
+                  const teachersRef = collection(db, "teachers");
+                  const batches = [];
+                  let currentBatch = writeBatch(db);
+                  let opCount = 0;
+
+                  importPreview.ready.forEach(teacher => {
+                    const docRef = doc(teachersRef, teacher.id.toString());
+                    currentBatch.set(docRef, teacher);
+                    opCount++;
+
+                    if (opCount === 500) {
+                      batches.push(currentBatch.commit());
+                      currentBatch = writeBatch(db);
+                      opCount = 0;
+                    }
+                  });
+                  if (opCount > 0) batches.push(currentBatch.commit());
+
+                  await Promise.all(batches);
+                  setImportPreview(null);
+                } catch (e) {
+                  console.error("Import error", e);
+                  alert("Gagal import: " + e.message);
+                } finally {
+                  setIsImporting(false);
+                }
+              }} style={{ flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: importPreview.ready.length === 0 ? "#94A3B8" : "#6366F1", color: "#FFF", fontWeight: 700, cursor: (importPreview.ready.length === 0 || isImporting) ? "not-allowed" : "pointer", fontSize: 13 }}>
+                {isImporting ? "Mengimpor..." : "Konfirmasi Import"}
+              </button>
             </div>
           </div>
         </div>

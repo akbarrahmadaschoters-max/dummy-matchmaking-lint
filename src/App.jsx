@@ -1,13 +1,62 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { auth, googleProvider, db } from "./firebase.js";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { collection, onSnapshot } from "firebase/firestore";
 import { INITIAL_TEACHERS } from "./scoring.js";
 import DashboardPage from "./DashboardPage.jsx";
 import ComparisonPage from "./ComparisonPage.jsx";
 import OnboardingPage from "./OnboardingPage.jsx";
 import DisqualifiedPage from "./DisqualifiedPage.jsx";
+import OfflinePage from "./OfflinePage.jsx";
+import LoginHero from "./LoginHero.jsx";
 
 export default function App() {
-  const [teachers, setTeachers] = useState(INITIAL_TEACHERS);
+  const [teachers, setTeachers] = useState([]);
   const [page, setPage] = useState("dashboard");
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+      
+      if (currentUser) {
+        // Start listening to Firestore when logged in
+        const unsubscribeDb = onSnapshot(collection(db, "teachers"), (snapshot) => {
+          const teachersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // Fallback to INITIAL_TEACHERS if DB is empty for demo purposes (optional)
+          if (teachersData.length === 0) {
+            setTeachers(INITIAL_TEACHERS);
+          } else {
+            setTeachers(teachersData);
+          }
+        });
+        return () => unsubscribeDb();
+      } else {
+        setTeachers([]);
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login failed", error);
+      alert("Login failed: " + error.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
 
   console.log("Verify Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
@@ -17,6 +66,14 @@ export default function App() {
     background: active ? "#EEF2FF" : "transparent",
     color: active ? "#4F46E5" : "#64748B",
   });
+
+  if (authLoading) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F8FAFC" }}>Loading...</div>;
+  }
+
+  if (!user) {
+    return <LoginHero onLogin={handleLogin} />;
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -35,13 +92,17 @@ export default function App() {
             <div style={{ display: "flex", gap: 4, background: "#F8FAFC", padding: 4, borderRadius: 11 }}>
               <button style={tabStyle(page === "dashboard")} onClick={() => setPage("dashboard")}>Dashboard</button>
               <button style={tabStyle(page === "comparison")} onClick={() => setPage("comparison")}>Comparison</button>
+              <button style={tabStyle(page === "offline")} onClick={() => setPage("offline")}>Offline & Hybrid</button>
               <button style={tabStyle(page === "onboarding")} onClick={() => setPage("onboarding")}>Onboarding Pool</button>
               <button style={tabStyle(page === "disqualified")} onClick={() => setPage("disqualified")}>Disqualified</button>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 11, color: "#94A3B8", background: "#F1F5F9", borderRadius: 6, padding: "3px 9px", fontWeight: 500 }}>PRD v1.0 · H2 2026</span>
-            <div style={{ width: 32, height: 32, background: "#E0E7FF", borderRadius: 99, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#4F46E5" }}>AR</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 11, color: "#4F46E5", background: "#EEF2FF", borderRadius: 6, padding: "3px 9px", fontWeight: 700 }}>Developed by Akbar</span>
+              <img src={user.photoURL} alt={user.displayName} style={{ width: 32, height: 32, borderRadius: 99, border: "1px solid #E2E8F0" }} title={user.displayName} />
+            </div>
+            <button onClick={handleLogout} style={{ background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA", padding: "6px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}>Logout</button>
           </div>
         </div>
       </div>
@@ -49,6 +110,7 @@ export default function App() {
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 32px" }}>
         {page === "dashboard" && <DashboardPage teachers={teachers} setTeachers={setTeachers} />}
         {page === "comparison" && <ComparisonPage teachers={teachers} />}
+        {page === "offline" && <OfflinePage teachers={teachers} setTeachers={setTeachers} />}
         {page === "onboarding" && <OnboardingPage teachers={teachers} setTeachers={setTeachers} />}
         {page === "disqualified" && <DisqualifiedPage teachers={teachers} setTeachers={setTeachers} />}
       </div>

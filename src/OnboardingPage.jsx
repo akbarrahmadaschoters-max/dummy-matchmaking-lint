@@ -1,10 +1,18 @@
 import { useMemo } from "react";
+import { db } from "./firebase.js";
+import { doc, setDoc } from "firebase/firestore";
 
 export default function OnboardingPage({ teachers, setTeachers }) {
   const onboardingTeachers = useMemo(() => teachers.filter(t => t.identifier === "Baru"), [teachers]);
 
-  const handlePromote = (id) => {
-    setTeachers(teachers.map(t => t.id === id ? { ...t, identifier: "Lama" } : t));
+  const handlePromote = async (id) => {
+    try {
+      await setDoc(doc(db, "teachers", id.toString()), { identifier: "Lama" }, { merge: true });
+      setTeachers(teachers.map(t => t.id === id ? { ...t, identifier: "Lama" } : t));
+    } catch (e) {
+      console.error("Error promoting teacher:", e);
+      alert("Gagal mempromosikan teacher: " + e.message);
+    }
   };
 
   const isComplete = (t) => {

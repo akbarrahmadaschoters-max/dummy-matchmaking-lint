@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { db } from "./firebase.js";
+import { doc, setDoc } from "firebase/firestore";
 import { scoreColor } from "./scoring.js";
 
 export default function DisqualifiedPage({ teachers, setTeachers }) {
@@ -17,9 +19,15 @@ export default function DisqualifiedPage({ teachers, setTeachers }) {
     }).sort((a, b) => new Date(b.disqualifiedAt || 0) - new Date(a.disqualifiedAt || 0));
   }, [disqualifiedTeachers, filterReason, search]);
 
-  const restoreTeacher = (id) => {
+  const restoreTeacher = async (id) => {
     if (confirm("Kembalikan teacher ini ke Pool Utama?")) {
-      setTeachers(ts => ts.map(t => t.id === id ? { ...t, isDisqualified: false, disqualifiedReason: null, disqualifiedAt: null } : t));
+      try {
+        await setDoc(doc(db, "teachers", id.toString()), { isDisqualified: false, disqualifiedReason: null, disqualifiedAt: null }, { merge: true });
+        setTeachers(ts => ts.map(t => t.id === id ? { ...t, isDisqualified: false, disqualifiedReason: null, disqualifiedAt: null } : t));
+      } catch (e) {
+        console.error("Error restoring teacher:", e);
+        alert("Gagal mengembalikan teacher: " + e.message);
+      }
     }
   };
 
