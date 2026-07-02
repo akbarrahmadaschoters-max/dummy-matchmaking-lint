@@ -102,7 +102,7 @@ function ProgramOnboardingSection({ programName, teachersList, allTeachers, setT
       </div>
       <div style={{ background: "#FFF", borderRadius: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.04)", overflow: "hidden", border: "1px solid #E2E8F0" }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
             <thead style={{ background: "#F8FAFC", borderBottom: "1.5px solid #E2E8F0" }}>
               <tr>
                 <th style={{ padding: "14px 20px", width: 40, textAlign: "center" }}>
@@ -200,8 +200,10 @@ export default function OnboardingPage({ teachers, setTeachers }) {
         <ProgramAnalyticsCard programName="Intertest" teachersList={intertestTeachers} />
       </div>
 
-      <ProgramOnboardingSection programName="Lingua" teachersList={linguaTeachers} allTeachers={teachers} setTeachers={setTeachers} />
-      <ProgramOnboardingSection programName="Intertest" teachersList={intertestTeachers} allTeachers={teachers} setTeachers={setTeachers} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(500px, 1fr))", gap: 24 }}>
+        <ProgramOnboardingSection programName="Lingua" teachersList={linguaTeachers} allTeachers={teachers} setTeachers={setTeachers} />
+        <ProgramOnboardingSection programName="Intertest" teachersList={intertestTeachers} allTeachers={teachers} setTeachers={setTeachers} />
+      </div>
       
       <style>{`
         @keyframes fadeInUp {
