@@ -41,17 +41,13 @@ export default function App() {
     return () => unsubscribeAuth();
   }, []);
 
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Login failed", error);
-      alert("Login failed: " + error.message);
-    }
-  };
-
   const handleLogout = async () => {
     try {
+      if (user?.uid === 'dummy-user-123') {
+        setUser(null);
+        setTeachers([]);
+        return;
+      }
       await signOut(auth);
     } catch (error) {
       console.error("Logout failed", error);
@@ -72,7 +68,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginHero onLogin={handleLogin} />;
+    return <LoginHero />;
   }
 
   return (
