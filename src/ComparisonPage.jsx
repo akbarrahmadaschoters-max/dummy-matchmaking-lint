@@ -23,7 +23,7 @@ function TeacherPicker({ label, value, options, onChange, color }) {
         <span style={{ width: 9, height: 9, borderRadius: "50%", background: color }} />
         {label}
       </label>
-      <select value={value ?? ""} onChange={e => onChange(e.target.value ? +e.target.value : null)}
+      <select value={value ?? ""} onChange={e => onChange(e.target.value || null)}
         style={{ width: "100%", padding: "11px 14px", border: `1.5px solid ${color}40`, borderRadius: 11, fontSize: 14, fontWeight: 600, color: "#0F172A", outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
         <option value="">— Pilih Teacher —</option>
         {options.map(t => <option key={t.id} value={t.id}>{t.name} ({t.score.final})</option>)}
@@ -64,8 +64,8 @@ export default function ComparisonPage({ teachers }) {
   const [idA, setIdA] = useState(suggested ? suggested[0] : null);
   const [idB, setIdB] = useState(suggested ? suggested[1] : null);
 
-  const teacherA = ranked.find(t => t.id === idA) || null;
-  const teacherB = ranked.find(t => t.id === idB) || null;
+  const teacherA = ranked.find(t => t.id?.toString() === idA?.toString()) || null;
+  const teacherB = ranked.find(t => t.id?.toString() === idB?.toString()) || null;
   const ready = teacherA && teacherB && teacherA.id !== teacherB.id;
 
   const applySuggestion = () => {
