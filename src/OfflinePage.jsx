@@ -250,6 +250,11 @@ export default function OfflinePage({ teachers, setTeachers }) {
   };
 
   const removeTeacher = async (id) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus data teacher ini?")) return;
+
+    // Optimistic update
+    setTeachers(prev => prev.filter(t => t.id !== id));
+
     try {
       await deleteDoc(doc(db, "teachers", id.toString()));
     } catch (e) {
