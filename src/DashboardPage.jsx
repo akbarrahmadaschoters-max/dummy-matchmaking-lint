@@ -6,6 +6,7 @@ import { StatusBadge, ScoreBar } from "./components.jsx";
 import { useGoogleLogin } from "@react-oauth/google";
 import { db } from "./firebase.js";
 import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
+import { importTeachers } from "./teacherService.js";
 
 // ─── Dashboard-specific sub-components ─────────────────────────
 function MetricCard({ statusKey, count, total, onClick, active }) {
@@ -783,34 +784,17 @@ export default function DashboardPage({ teachers, setTeachers }) {
               <button disabled={importPreview.ready.length === 0 || isImporting} onClick={async () => {
                 setIsImporting(true);
                 try {
-                  const teachersRef = collection(db, "teachers");
-                  const batches = [];
-                  let currentBatch = writeBatch(db);
-                  let opCount = 0;
-
-                  importPreview.ready.forEach(teacher => {
-                    const docRef = doc(teachersRef, teacher.id.toString());
-                    currentBatch.set(docRef, teacher);
-                    opCount++;
-
-                    if (opCount === 500) {
-                      batches.push(currentBatch.commit());
-                      currentBatch = writeBatch(db);
-                      opCount = 0;
-                    }
-                  });
-                  if (opCount > 0) batches.push(currentBatch.commit());
-
-                  await Promise.all(batches);
+                  await importTeachers(importPreview.ready);
+                  alert(`✅ ${importPreview.ready.length} teacher berhasil diimpor ke Firestore!`);
                   setImportPreview(null);
                 } catch (e) {
                   console.error("Import error", e);
-                  alert("Gagal import: " + e.message);
+                  alert("❌ Import gagal: " + e.message);
                 } finally {
                   setIsImporting(false);
                 }
-              }} style={{ flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: importPreview.ready.length === 0 ? "#94A3B8" : "#6366F1", color: "#FFF", fontWeight: 700, cursor: (importPreview.ready.length === 0 || isImporting) ? "not-allowed" : "pointer", fontSize: 13 }}>
-                {isImporting ? "Mengimpor..." : "Konfirmasi Import"}
+              }} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "linear-gradient(135deg,#6366F1,#4F46E5)", color: "#FFF", fontWeight: 700, cursor: isImporting ? "not-allowed" : "pointer", opacity: importPreview.ready.length === 0 || isImporting ? 0.5 : 1, border: "none" }}>
+                {isImporting ? "Mengimpor..." : "Simpan ke Database"}
               </button>
             </div>
           </div>

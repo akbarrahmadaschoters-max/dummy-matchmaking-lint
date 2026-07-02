@@ -37,3 +37,6 @@ npm run preview # preview build lokal
 
 ---
 Prepared by Akbar Rahmada · LINT 2026
+
+### 🔒 Firestore Security Rules Note
+Firestore saat ini dalam *test mode* (expire dalam 30 hari). Sebelum masa percobaan tersebut berakhir, Anda perlu memperbarui *security rules* di Firebase Console → Firestore → Rules agar operasi read/write tetap berfungsi.
