@@ -316,6 +316,130 @@ function AddTeacherModal({ onSave, onClose }) {
   return <EditModal teacher={blank} onSave={onSave} onClose={onClose} />;
 }
 
+function ProgramHealthCard({ programName, scoredTeachers }) {
+  const programTeachers = scoredTeachers.filter(t => t.program === programName);
+  
+  const c = { "Top Performer": 0, Eligible: 0, Watch: 0, "Perlu Review": 0 };
+  programTeachers.forEach(t => {
+    if (!t.isDisqualified && c[t.status] !== undefined) {
+      c[t.status]++;
+    }
+  });
+
+  const activeCount = Object.values(c).reduce((a, b) => a + b, 0);
+
+  const dData = [
+    { name: "Top Performer", value: c["Top Performer"], color: STATUS_CONFIG["Top Performer"].dot, status: "Top Performer" },
+    { name: "Eligible",      value: c["Eligible"],      color: STATUS_CONFIG["Eligible"].dot, status: "Eligible" },
+    { name: "Watch",         value: c["Watch"],         color: STATUS_CONFIG["Watch"].dot, status: "Watch" },
+    { name: "Perlu Review",  value: c["Perlu Review"],  color: STATUS_CONFIG["Perlu Review"].dot, status: "Perlu Review" },
+  ].filter(d => d.value > 0);
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const pct = activeCount > 0 ? Math.round((data.value / activeCount) * 100) : 0;
+      return (
+        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", padding: "12px 16px", borderRadius: 12, boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: data.color }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{STATUS_CONFIG[data.status].label}</span>
+          </div>
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            <span style={{ fontWeight: 600, color: "#0F172A" }}>{data.value}</span> teachers ({pct}%)
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const top5 = programTeachers
+    .filter(t => !t.isDisqualified)
+    .sort((a, b) => b.score.final - a.score.final)
+    .slice(0, 5);
+
+  return (
+    <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>Pool Health &mdash; {programName}</div>
+      
+      {programTeachers.length === 0 ? (
+        <div style={{ flex: 1, padding: "40px 20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 12, border: "2px dashed #E2E8F0" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#64748B" }}>Belum ada data teacher untuk program ini</div>
+          <div style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>Import CSV atau tambah teacher untuk program ini agar muncul di sini</div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, position: "relative" }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={dData} innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value" stroke="none">
+                    {dData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ position: "absolute", textAlign: "center", pointerEvents: "none" }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{activeCount}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>Teachers</div>
+              </div>
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {["Top Performer", "Eligible", "Watch", "Perlu Review"].map(s => {
+                const val = c[s];
+                const pct = activeCount > 0 ? Math.round((val / activeCount) * 100) : 0;
+                return (
+                  <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: STATUS_CONFIG[s].dot, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>{s}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{val} <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: 11 }}>({pct}%)</span></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>Top 5 Spotlight</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {top5.map((t, idx) => (
+                <div key={t.id} onClick={() => document.getElementById(`row-${t.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                     style={{ 
+                       background: idx === 0 ? "linear-gradient(to right, #EEF2FF, #FFF)" : "#FFF",
+                       border: idx === 0 ? "1.5px solid #C7D2FE" : "1px solid #E2E8F0", 
+                       borderRadius: 12, padding: "12px 16px", cursor: "pointer",
+                       display: "flex", alignItems: "center", gap: 12, transition: "transform 0.15s",
+                       boxShadow: idx === 0 ? "0 4px 12px rgba(79,70,229,0.06)" : "none"
+                     }}
+                     onMouseEnter={e => e.currentTarget.style.transform = "translateX(4px)"}
+                     onMouseLeave={e => e.currentTarget.style.transform = "translateX(0)"}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: idx === 0 ? "#4F46E5" : "#94A3B8", width: 24, textAlign: "center" }}>
+                    #{idx + 1}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: 6 }}>
+                      {t.name}
+                      {idx === 0 && <span style={{ fontSize: 12 }}>👑</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: scoreColor(t.score.final), lineHeight: 1 }}>{t.score.final}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard ────────────────────────────────────────────
 export default function DashboardPage({ teachers, setTeachers }) {
   const [filterProgram, setFilterProgram] = useState("All");
@@ -438,34 +562,6 @@ export default function DashboardPage({ teachers, setTeachers }) {
     return c;
   }, [scored]);
 
-  const activeCount = useMemo(() => Object.keys(counts).filter(k => k !== "Disqualified").reduce((a, b) => a + counts[b], 0), [counts]);
-
-  const donutData = useMemo(() => [
-    { name: "Top Performer", value: counts["Top Performer"], color: STATUS_CONFIG["Top Performer"].dot, status: "Top Performer" },
-    { name: "Eligible",      value: counts["Eligible"],      color: STATUS_CONFIG["Eligible"].dot, status: "Eligible" },
-    { name: "Watch",         value: counts["Watch"],         color: STATUS_CONFIG["Watch"].dot, status: "Watch" },
-    { name: "Perlu Review",  value: counts["Perlu Review"],  color: STATUS_CONFIG["Perlu Review"].dot, status: "Perlu Review" },
-  ].filter(d => d.value > 0), [counts]);
-
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const pct = activeCount > 0 ? Math.round((data.value / activeCount) * 100) : 0;
-      return (
-        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", padding: "12px 16px", borderRadius: 12, boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <div style={{ width: 10, height: 10, borderRadius: "50%", background: data.color }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{STATUS_CONFIG[data.status].label}</span>
-          </div>
-          <div style={{ fontSize: 13, color: "#475569" }}>
-            <span style={{ fontWeight: 600, color: "#0F172A" }}>{data.value}</span> teachers ({pct}%)
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
   const updateTeacher = async (updated) => {
     try {
       await setDoc(doc(db, "teachers", updated.id.toString()), updated, { merge: true });
@@ -559,75 +655,11 @@ export default function DashboardPage({ teachers, setTeachers }) {
           ))}
         </div>
 
-        {/* Pool Health & Spotlight */}
+        {/* Pool Health & Spotlight (Split by Program) */}
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: "#0F172A", marginBottom: 16 }}>Pool Health & Top Spotlight</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24 }}>
-            
-            {/* Donut Chart */}
-            <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 220, position: "relative" }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={donutData} innerRadius={70} outerRadius={100} paddingAngle={4} dataKey="value" stroke="none">
-                      {donutData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{ position: "absolute", textAlign: "center", pointerEvents: "none" }}>
-                  <div style={{ fontSize: 32, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{activeCount}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>Teachers in pool</div>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
-                {["Top Performer", "Eligible", "Watch", "Perlu Review"].map(s => {
-                  const val = counts[s];
-                  const pct = activeCount > 0 ? Math.round((val / activeCount) * 100) : 0;
-                  return (
-                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: STATUS_CONFIG[s].dot, flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>{s}</div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{val} <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: 11 }}>({pct}%)</span></div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Top 5 Spotlight */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {scored.filter(t => !t.isDisqualified).slice(0, 5).map((t, idx) => (
-                <div key={t.id} onClick={() => document.getElementById(`row-${t.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                     style={{ 
-                       background: idx === 0 ? "linear-gradient(to right, #EEF2FF, #FFF)" : "#FFF",
-                       border: idx === 0 ? "1.5px solid #C7D2FE" : "1px solid #E2E8F0", 
-                       borderRadius: 14, padding: "16px 20px", cursor: "pointer",
-                       display: "flex", alignItems: "center", gap: 16, transition: "transform 0.15s",
-                       boxShadow: idx === 0 ? "0 4px 12px rgba(79,70,229,0.06)" : "none"
-                     }}
-                     onMouseEnter={e => e.currentTarget.style.transform = "translateX(6px)"}
-                     onMouseLeave={e => e.currentTarget.style.transform = "translateX(0)"}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: idx === 0 ? "#4F46E5" : "#94A3B8", width: 28, textAlign: "center" }}>
-                    #{idx + 1}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: 8 }}>
-                      {t.name}
-                      {idx === 0 && <span style={{ fontSize: 14 }}>👑</span>}
-                    </div>
-                    <div style={{ fontSize: 13, color: "#64748B", marginTop: 2 }}>{t.program}</div>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final), lineHeight: 1 }}>{t.score.final}</div>
-                    <StatusBadge status={t.status} />
-                  </div>
-                </div>
-              ))}
-            </div>
-            
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 24 }}>
+            <ProgramHealthCard programName="Lingua" scoredTeachers={scored} />
+            <ProgramHealthCard programName="Intertest" scoredTeachers={scored} />
           </div>
         </div>
 
