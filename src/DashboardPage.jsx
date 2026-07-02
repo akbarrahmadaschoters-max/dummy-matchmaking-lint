@@ -457,9 +457,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
   const [gToken, setGToken] = useState(null);
   const fileInputRef = useRef(null);
   
-  const [matchMode, setMatchMode]         = useState(false);
-  const [matchProgram, setMatchProgram]   = useState("IELTS");
-  const [matchSlot, setMatchSlot]         = useState("Senin 19:00");
+
 
   const downloadTemplate = () => {
     const header = "No,Tier,Nama Tutor,Skor QC,Skor NPS,Jumlah Detractors,Jumlah Passives,Jumlah Promoters,Compliance,Ganti Tutor,Program\n";
@@ -537,18 +535,13 @@ export default function DashboardPage({ teachers, setTeachers }) {
   const filtered = useMemo(() => scored.filter(t => {
     if (t.identifier === "Baru") return false;
     if (t.isDisqualified) return activeMetric === "Disqualified";
-    if (matchMode) {
-      if (t.program !== matchProgram) return false;
-      if (!t.availabilitySlots?.includes(matchSlot)) return false;
-      return true;
-    }
     if (filterProgram !== "All" && t.program !== filterProgram) return false;
     const fs = activeMetric || filterStatus;
     if (fs !== "All" && t.status !== fs) return false;
     if (filterAvail !== "All" && t.availability !== filterAvail) return false;
     if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  }), [scored, matchMode, matchProgram, matchSlot, filterProgram, filterStatus, filterAvail, search, activeMetric]);
+  }), [scored, filterProgram, filterStatus, filterAvail, search, activeMetric]);
 
   const counts = useMemo(() => {
     const c = { "Top Performer": 0, Eligible: 0, Watch: 0, "Perlu Review": 0, Disqualified: 0 };
@@ -655,6 +648,28 @@ export default function DashboardPage({ teachers, setTeachers }) {
           ))}
         </div>
 
+        {/* Keterangan Status Tier */}
+        <div style={{ marginBottom: 32, background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 18, padding: "28px 32px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 20, textAlign: "center" }}>Keterangan Status Tier</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+            {[
+              { status: "Top Performer", score: "80–100", desc: "Teacher terbaik, prioritas utama untuk assignment", bg: "rgba(16, 185, 129, 0.05)", border: "rgba(16, 185, 129, 0.15)" },
+              { status: "Eligible", score: "60–79", desc: "Qualified dan siap di-assign", bg: "rgba(59, 130, 246, 0.05)", border: "rgba(59, 130, 246, 0.15)" },
+              { status: "Watch", score: "40–59", desc: "Ada concern, perlu review sebelum assign", bg: "rgba(245, 158, 11, 0.05)", border: "rgba(245, 158, 11, 0.15)" },
+              { status: "Disqualified", score: "< 40", desc: "Tidak eligible, perlu improvement plan", bg: "rgba(239, 68, 68, 0.05)", border: "rgba(239, 68, 68, 0.15)" }
+            ].map(tier => (
+              <div key={tier.status} style={{ 
+                background: tier.bg, border: `1px solid ${tier.border}`, borderRadius: 14, padding: "16px",
+                display: "flex", flexDirection: "column", gap: 8, transition: "all 0.2s"
+              }} onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.05)"; }} onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
+                <div style={{ alignSelf: "flex-start" }}><StatusBadge status={tier.status} /></div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{tier.score}</div>
+                <div style={{ fontSize: 13, color: "#64748B", lineHeight: 1.4 }}>{tier.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Pool Health & Spotlight (Split by Program) */}
         <div style={{ marginBottom: 32 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 24 }}>
@@ -663,45 +678,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
           </div>
         </div>
 
-        {/* Match Mode Panel */}
-        <div style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1.5px solid #C7D2FE", borderRadius: 16, padding: "20px 24px", marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <span style={{ fontSize: 22 }}>🎯</span>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "#3730A3" }}>Match Mode</div>
-              <div style={{ fontSize: 13, color: "#6366F1", marginTop: 2 }}>Masukkan kebutuhan student untuk mencari teacher terbaik yang available</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", display: "block", marginBottom: 6 }}>Program</label>
-              <select value={matchProgram} onChange={e => setMatchProgram(e.target.value)} disabled={matchMode} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #C7D2FE", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF" }}>
-                <option>IELTS</option>
-                <option>SAT</option>
-              </select>
-            </div>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#4F46E5", display: "block", marginBottom: 6 }}>Slot Waktu</label>
-              <select value={matchSlot} onChange={e => setMatchSlot(e.target.value)} disabled={matchMode} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #C7D2FE", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF" }}>
-                <option>Senin 19:00</option>
-                <option>Selasa 19:00</option>
-                <option>Rabu 19:00</option>
-                <option>Kamis 16:00</option>
-                <option>Jumat 16:00</option>
-              </select>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              {!matchMode ? (
-                <button onClick={() => setMatchMode(true)} style={{ padding: "11px 24px", background: "#4F46E5", color: "#FFF", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cari Match</button>
-              ) : (
-                <button onClick={() => { setMatchMode(false); setFilterProgram("All"); setFilterStatus("All"); setFilterAvail(false); setSearch(""); setActiveMetric(null); }} style={{ padding: "11px 24px", background: "#FFF", color: "#B91C1C", border: "1.5px solid #FECACA", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Reset Pool</button>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Filters */}
-        {!matchMode && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama teacher..."
@@ -733,7 +710,6 @@ export default function DashboardPage({ teachers, setTeachers }) {
             <option value="Low">Low</option>
           </select>
         </div>
-        )}
 
         {/* Table */}
         <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "auto" }}>
