@@ -42,3 +42,33 @@ export const importTeachers = async (teacherArray) => {
     throw error; // Lempar error agar bisa ditangkap oleh blok catch di komponen UI
   }
 };
+
+// Menghapus semua data teacher di Firestore
+export const deleteAllTeachers = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, "teachers"));
+    if (snapshot.empty) return;
+
+    const batches = [];
+    let currentBatch = writeBatch(db);
+    let opCount = 0;
+
+    snapshot.docs.forEach(docSnap => {
+      currentBatch.delete(docSnap.ref);
+      opCount++;
+
+      if (opCount === 500) {
+        batches.push(currentBatch.commit());
+        currentBatch = writeBatch(db);
+        opCount = 0;
+      }
+    });
+
+    if (opCount > 0) batches.push(currentBatch.commit());
+
+    await Promise.all(batches);
+  } catch (error) {
+    console.error("Gagal menghapus semua data teachers:", error);
+    throw error;
+  }
+};

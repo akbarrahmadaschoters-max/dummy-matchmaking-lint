@@ -8,6 +8,7 @@ import { StatusBadge, ScoreBar } from "./components.jsx";
 import { useGoogleLogin } from "@react-oauth/google";
 import { db } from "./firebase.js";
 import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
+import { deleteAllTeachers } from "./teacherService.js";
 
 function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken }) {
   const { breakdown, penalty } = score;
@@ -239,6 +240,7 @@ export default function OfflinePage({ teachers, setTeachers }) {
   const [drill, setDrill] = useState(null);
   const [editing, setEditing] = useState(null);
   const [gToken, setGToken] = useState(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   const updateTeacher = async (updated) => {
     try {
@@ -262,6 +264,23 @@ export default function OfflinePage({ teachers, setTeachers }) {
       alert("Gagal menghapus: " + e.message);
     }
   };
+
+  const handleResetData = async () => {
+    if (!window.confirm("PERINGATAN: Anda yakin ingin MENGHAPUS SEMUA DATA teacher di seluruh aplikasi? Tindakan ini tidak dapat dibatalkan!")) return;
+    
+    setIsResetting(true);
+    setTeachers([]); // Optimistic clear
+    try {
+      await deleteAllTeachers();
+      alert("✅ Semua data berhasil dihapus / diperbarui.");
+    } catch (e) {
+      console.error("Gagal menghapus data:", e);
+      alert("❌ Gagal mereset data: " + e.message);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const fileInputRef = useRef(null);
 
   const offlineTeachers = useMemo(() => teachers.filter(t => t.kota), [teachers]);
@@ -439,6 +458,10 @@ export default function OfflinePage({ teachers, setTeachers }) {
           <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Geographic distribution & status tracking</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
+          <button disabled={isResetting} onClick={handleResetData} style={{
+            background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
+            padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: isResetting ? 0.6 : 1
+          }}>{isResetting ? "Memproses..." : "Perbarui Data"}</button>
           <button onClick={downloadTemplate} style={{
             background: "#F1F5F9", color: "#475569", border: "1.5px solid #E2E8F0", borderRadius: 10,
             padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"

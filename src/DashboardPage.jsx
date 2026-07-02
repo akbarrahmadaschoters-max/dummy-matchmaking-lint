@@ -6,7 +6,7 @@ import { StatusBadge, ScoreBar } from "./components.jsx";
 import { useGoogleLogin } from "@react-oauth/google";
 import { db } from "./firebase.js";
 import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
-import { importTeachers } from "./teacherService.js";
+import { importTeachers, deleteAllTeachers } from "./teacherService.js";
 
 // ─── Dashboard-specific sub-components ─────────────────────────
 function MetricCard({ statusKey, count, total, onClick, active }) {
@@ -329,6 +329,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
   const [activeMetric, setActiveMetric]   = useState(null);
   const [importPreview, setImportPreview] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [gToken, setGToken] = useState(null);
   const fileInputRef = useRef(null);
   
@@ -498,6 +499,22 @@ export default function DashboardPage({ teachers, setTeachers }) {
     }
   };
 
+  const handleResetData = async () => {
+    if (!window.confirm("PERINGATAN: Anda yakin ingin MENGHAPUS SEMUA DATA teacher di seluruh aplikasi? Tindakan ini tidak dapat dibatalkan!")) return;
+    
+    setIsResetting(true);
+    setTeachers([]); // Optimistic clear
+    try {
+      await deleteAllTeachers();
+      alert("✅ Semua data berhasil dihapus / diperbarui.");
+    } catch (e) {
+      console.error("Gagal menghapus data:", e);
+      alert("❌ Gagal mereset data: " + e.message);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <div>
         {/* Page Title */}
@@ -510,6 +527,10 @@ export default function DashboardPage({ teachers, setTeachers }) {
             </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
+            <button disabled={isResetting} onClick={handleResetData} style={{
+              background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
+              padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: isResetting ? 0.6 : 1
+            }}>{isResetting ? "Memproses..." : "Perbarui Data"}</button>
             <button onClick={downloadTemplate} style={{
               background: "#F1F5F9", color: "#475569", border: "1.5px solid #E2E8F0", borderRadius: 10,
               padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
