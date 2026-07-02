@@ -357,6 +357,10 @@ export default function OfflinePage({ teachers, setTeachers }) {
       complete: (results) => {
         const CITY_COORDINATES = {
           "jakarta": { lat: -6.2088, lng: 106.8456 },
+          "bekasi": { lat: -6.2415, lng: 106.9924 },
+          "tangerang": { lat: -6.1702, lng: 106.6403 },
+          "depok": { lat: -6.4025, lng: 106.7942 },
+          "bogor": { lat: -6.5971, lng: 106.7900 },
           "bandung": { lat: -6.9175, lng: 107.6191 },
           "surabaya": { lat: -7.2504, lng: 112.7688 },
           "yogyakarta": { lat: -7.7956, lng: 110.3695 },
