@@ -71,9 +71,35 @@ function ProgramOnboardingSection({ programName, teachersList, allTeachers, setT
   const allCompletes = onboarding.filter(isComplete);
   const isAllSelected = allCompletes.length > 0 && selectedIds.size === allCompletes.length;
 
+  const handlePromoteAll = () => {
+    if (allCompletes.length === 0) return;
+    if (window.confirm(`Promote semua ${allCompletes.length} teacher di ${programName} ke Pool Utama?`)) {
+      handlePromote(allCompletes.map(t => t.id));
+    }
+  };
+
   return (
     <div style={{ marginBottom: 40, position: "relative" }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", marginBottom: 16 }}>Onboarding &mdash; {programName}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#0F172A" }}>Onboarding &mdash; {programName}</div>
+        <button 
+          onClick={handlePromoteAll} 
+          disabled={allCompletes.length === 0 || isPromoting}
+          style={{ 
+            background: "linear-gradient(135deg, #4F46E5, #6366F1)", 
+            color: "#FFF", 
+            border: "none", 
+            borderRadius: 10, 
+            padding: "10px 18px", 
+            fontSize: 13, 
+            fontWeight: 700, 
+            cursor: allCompletes.length === 0 ? "not-allowed" : "pointer", 
+            boxShadow: "0 4px 12px rgba(99,102,241,0.25)",
+            opacity: (allCompletes.length === 0 || isPromoting) ? 0.6 : 1
+          }}>
+          {isPromoting ? "Memproses..." : `Onboarding-kan Semua ${programName}`}
+        </button>
+      </div>
       <div style={{ background: "#FFF", borderRadius: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.04)", overflow: "hidden", border: "1px solid #E2E8F0" }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
@@ -107,7 +133,7 @@ function ProgramOnboardingSection({ programName, teachersList, allTeachers, setT
                       </td>
                       <td style={{ padding: "16px 0" }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>{t.name}</div>
-                        <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{t.kota || "Unknown"}</div>
+                        <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{t.program || "Unknown"}</div>
                       </td>
                       <td style={{ padding: "16px 20px" }}>
                         <div style={{ display: "flex", gap: 8 }}>
