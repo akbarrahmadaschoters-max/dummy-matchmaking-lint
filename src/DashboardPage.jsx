@@ -255,7 +255,7 @@ function EditModal({ teacher, onSave, onClose }) {
 
   const fields = [
     { key: "name",        label: "Nama Teacher",             type: "text"   },
-    { key: "program",     label: "Program",                  type: "select", opts: ["IELTS", "SAT"] },
+    { key: "program",     label: "Program",                  type: "select", opts: ["Lingua", "Intertest"] },
     { key: "qc",          label: "QC Score (0–100)",         type: "number", min: 0, max: 100 },
     { key: "nps",         label: "NPS Tutor (0–100)",        type: "number", min: 0, max: 100 },
     { key: "inspection",  label: "Class Inspection (0–100)", type: "number", min: 0, max: 100 },
@@ -312,7 +312,7 @@ function EditModal({ teacher, onSave, onClose }) {
 }
 
 function AddTeacherModal({ onSave, onClose }) {
-  const blank = { id: Date.now(), name: "", program: "IELTS", qc: 80, nps: 75, inspection: 70, compliance: 85, gantiTutor: 0, hasInspection: true, identifier: "Baru", availability: "Moderate", availabilitySlots: [] };
+  const blank = { id: Date.now(), name: "", program: "Lingua", qc: 80, nps: 75, inspection: 70, compliance: 85, gantiTutor: 0, hasInspection: true, identifier: "Baru", availability: "Moderate", availabilitySlots: [] };
   return <EditModal teacher={blank} onSave={onSave} onClose={onClose} />;
 }
 
@@ -685,7 +685,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
               style={{ width: "100%", padding: "9px 12px 9px 36px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", boxSizing: "border-box" }} />
             <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94A3B8", fontSize: 15 }}>🔍</span>
           </div>
-          {["All", "IELTS", "SAT"].map(p => (
+          {["All", "Lingua", "Intertest"].map(p => (
             <button key={p} onClick={() => setFilterProgram(p)} style={{
               padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer",
               border: filterProgram === p ? "1.5px solid #6366F1" : "1.5px solid #E2E8F0",

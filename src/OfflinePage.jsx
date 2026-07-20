@@ -164,7 +164,7 @@ function EditModal({ teacher, onSave, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const fields = [
     { key: "name",        label: "Nama Teacher",             type: "text"   },
-    { key: "program",     label: "Program",                  type: "select", opts: ["IELTS", "SAT"] },
+    { key: "program",     label: "Program",                  type: "select", opts: ["Lingua", "Intertest"] },
     { key: "kota",        label: "Kota",                     type: "text"   },
     { key: "qc",          label: "QC Score (0–100)",         type: "number", min: 0, max: 100 },
     { key: "nps",         label: "NPS Tutor (0–100)",        type: "number", min: 0, max: 100 },
@@ -378,7 +378,7 @@ export default function OfflinePage({ teachers, setTeachers }) {
           try {
             const name = String(row["Nama Tutor"] || "").trim();
             const kota = String(row["Kota"] || "").trim();
-            const p = String(row["Program"] || "IELTS").trim();
+            const p = String(row["Program"] || "Lingua").trim();
             if (!name || !kota) throw new Error("Nama Tutor atau Kota kosong");
 
             const coords = CITY_COORDINATES[kota.toLowerCase()] || CITY_COORDINATES["default"];
