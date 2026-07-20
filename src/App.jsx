@@ -10,12 +10,14 @@ import DisqualifiedPage from "./DisqualifiedPage.jsx";
 import OfflinePage from "./OfflinePage.jsx";
 import MasterDataPage from "./MasterDataPage.jsx";
 import MasterDataIntertestPage from "./MasterDataIntertestPage.jsx";
+import TimeAvailabilityPage from "./TimeAvailabilityPage.jsx";
 import LoginHero from "./LoginHero.jsx";
 
 export default function App() {
   const [teachers, setTeachers] = useState([]);
   const [masterTeachers, setMasterTeachers] = useState([]);
   const [masterIntertestTeachers, setMasterIntertestTeachers] = useState([]);
+  const [timeAvailabilityData, setTimeAvailabilityData] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -48,15 +50,23 @@ export default function App() {
           setMasterIntertestTeachers(masterIntertestData);
         });
 
+        // Listen to tutor_time_availability collection
+        const unsubscribeTimeAvailDb = onSnapshot(collection(db, "tutor_time_availability"), (snapshot) => {
+          const timeAvailData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setTimeAvailabilityData(timeAvailData);
+        });
+
         return () => {
           unsubscribeDb();
           unsubscribeMasterDb();
           unsubscribeMasterIntertestDb();
+          unsubscribeTimeAvailDb();
         };
       } else {
         setTeachers([]);
         setMasterTeachers([]);
         setMasterIntertestTeachers([]);
+        setTimeAvailabilityData([]);
       }
     });
 
@@ -70,6 +80,7 @@ export default function App() {
         setTeachers([]);
         setMasterTeachers([]);
         setMasterIntertestTeachers([]);
+        setTimeAvailabilityData([]);
         return;
       }
       await signOut(auth);
@@ -81,7 +92,7 @@ export default function App() {
   console.log("Verify Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
   const tabStyle = (active) => ({
-    padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+    padding: "8px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600,
     cursor: "pointer", border: "none", transition: "all 0.15s",
     background: active ? "#EEF2FF" : "transparent",
     color: active ? "#4F46E5" : "#64748B",
@@ -109,10 +120,11 @@ export default function App() {
                 <span style={{ fontSize: 12, color: "#94A3B8", marginLeft: 8 }}>Matchmaking Dashboard</span>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 4, background: "#F8FAFC", padding: 4, borderRadius: 11 }}>
+            <div style={{ display: "flex", gap: 2, background: "#F8FAFC", padding: 4, borderRadius: 11 }}>
               <button style={tabStyle(page === "dashboard")} onClick={() => setPage("dashboard")}>Dashboard</button>
               <button style={tabStyle(page === "master_data")} onClick={() => setPage("master_data")}>Master Lingua</button>
               <button style={tabStyle(page === "master_intertest")} onClick={() => setPage("master_intertest")}>Master Intertest</button>
+              <button style={tabStyle(page === "time_availability")} onClick={() => setPage("time_availability")}>Time Availability</button>
               <button style={tabStyle(page === "comparison")} onClick={() => setPage("comparison")}>Comparison</button>
               <button style={tabStyle(page === "offline")} onClick={() => setPage("offline")}>Offline & Hybrid</button>
               <button style={tabStyle(page === "onboarding")} onClick={() => setPage("onboarding")}>Onboarding Pool</button>
@@ -133,6 +145,7 @@ export default function App() {
         {page === "dashboard" && <DashboardPage teachers={teachers} setTeachers={setTeachers} />}
         {page === "master_data" && <MasterDataPage masterTeachers={masterTeachers} setMasterTeachers={setMasterTeachers} />}
         {page === "master_intertest" && <MasterDataIntertestPage masterIntertestTeachers={masterIntertestTeachers} setMasterIntertestTeachers={setMasterIntertestTeachers} />}
+        {page === "time_availability" && <TimeAvailabilityPage timeAvailabilityData={timeAvailabilityData} setTimeAvailabilityData={setTimeAvailabilityData} />}
         {page === "comparison" && <ComparisonPage teachers={teachers} />}
         {page === "offline" && <OfflinePage teachers={teachers} setTeachers={setTeachers} />}
         {page === "onboarding" && <OnboardingPage teachers={teachers} setTeachers={setTeachers} />}
