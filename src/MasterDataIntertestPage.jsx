@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import Papa from "papaparse";
 import { importMasterIntertestTeachers, deleteAllMasterIntertestTeachers } from "./masterIntertestService.js";
+import targaryenPassword from "../env/HouseofTargareyan?raw";
 
 function DetailModal({ tutor, onClose }) {
   if (!tutor) return null;
@@ -241,6 +242,12 @@ export default function MasterDataIntertestPage({ masterIntertestTeachers = [], 
 
   // Reset database & local UI
   const handleResetData = async () => {
+    const userPass = window.prompt("Masukkan kata sandi untuk memperbarui/menghapus data:");
+    if (userPass !== targaryenPassword.trim()) {
+      alert("❌ Kata sandi salah! Tindakan ditolak.");
+      return;
+    }
+
     if (!window.confirm("PERINGATAN MENGHAPUS DATABASE:\nApakah Anda yakin ingin MENGHAPUS SEMUA MASTER DATA TUTOR INTERTEST di database Firestore?\n\nTindakan ini tidak dapat dibatalkan!")) {
       return;
     }

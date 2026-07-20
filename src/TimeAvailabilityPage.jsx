@@ -4,6 +4,7 @@ import { db } from "./firebase.js";
 import { collection, doc, getDocs, writeBatch, setDoc, onSnapshot } from "firebase/firestore";
 import { importTimeAvailability, deleteAllTimeAvailability } from "./timeAvailabilityService.js";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import targaryenPassword from "../env/HouseofTargareyan?raw";
 
 // Helper function to calculate percentile
 function getPercentile(arr, p) {
@@ -262,6 +263,12 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
 
   // Reset database & local UI
   const handleResetData = async () => {
+    const userPass = window.prompt("Masukkan kata sandi untuk memperbarui/menghapus data:");
+    if (userPass !== targaryenPassword.trim()) {
+      alert("❌ Kata sandi salah! Tindakan ditolak.");
+      return;
+    }
+
     if (!window.confirm("PERINGATAN MENGHAPUS DATABASE:\nApakah Anda yakin ingin MENGHAPUS SEMUA DATA TIME AVAILABILITY TUTOR di database Firestore?\n\nTindakan ini tidak dapat dibatalkan!")) {
       return;
     }

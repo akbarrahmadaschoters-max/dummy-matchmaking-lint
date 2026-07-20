@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import Papa from "papaparse";
 import { importMasterTeachers, deleteAllMasterTeachers } from "./masterTeacherService.js";
+import targaryenPassword from "../env/HouseofTargareyan?raw";
 
 function getScoreCategory(scoreStr) {
   if (!scoreStr || scoreStr.trim() === "-" || scoreStr.toLowerCase() === "n/a") {
@@ -298,6 +299,12 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
 
   // Reset database & local UI
   const handleResetData = async () => {
+    const userPass = window.prompt("Masukkan kata sandi untuk memperbarui/menghapus data:");
+    if (userPass !== targaryenPassword.trim()) {
+      alert("❌ Kata sandi salah! Tindakan ditolak.");
+      return;
+    }
+
     if (!window.confirm("PERINGATAN MENGHAPUS DATABASE:\nApakah Anda yakin ingin MENGHAPUS SEMUA MASTER DATA TUTOR LINGUA di database Firestore?\n\nTindakan ini tidak dapat dibatalkan!")) {
       return;
     }

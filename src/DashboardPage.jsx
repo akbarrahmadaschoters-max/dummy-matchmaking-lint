@@ -7,6 +7,7 @@ import { useGoogleLogin } from "@react-oauth/google";
 import { db } from "./firebase.js";
 import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
 import { importTeachers, deleteAllTeachers } from "./teacherService.js";
+import targaryenPassword from "../env/HouseofTargareyan?raw";
 
 // ─── Dashboard-specific sub-components ─────────────────────────
 function MetricCard({ statusKey, count, total, onClick, active }) {
@@ -596,6 +597,12 @@ export default function DashboardPage({ teachers, setTeachers }) {
   };
 
   const handleResetData = async () => {
+    const userPass = window.prompt("Masukkan kata sandi untuk memperbarui/menghapus data:");
+    if (userPass !== targaryenPassword.trim()) {
+      alert("❌ Kata sandi salah! Tindakan ditolak.");
+      return;
+    }
+
     if (!window.confirm("PERINGATAN: Anda yakin ingin MENGHAPUS SEMUA DATA teacher di seluruh aplikasi? Tindakan ini tidak dapat dibatalkan!")) return;
     
     setIsResetting(true);

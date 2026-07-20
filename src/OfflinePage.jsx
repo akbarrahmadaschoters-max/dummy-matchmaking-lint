@@ -9,6 +9,7 @@ import { useGoogleLogin } from "@react-oauth/google";
 import { db } from "./firebase.js";
 import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
 import { deleteAllTeachers } from "./teacherService.js";
+import targaryenPassword from "../env/HouseofTargareyan?raw";
 
 function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken }) {
   const { breakdown, penalty } = score;
@@ -266,6 +267,12 @@ export default function OfflinePage({ teachers, setTeachers }) {
   };
 
   const handleResetData = async () => {
+    const userPass = window.prompt("Masukkan kata sandi untuk memperbarui/menghapus data:");
+    if (userPass !== targaryenPassword.trim()) {
+      alert("❌ Kata sandi salah! Tindakan ditolak.");
+      return;
+    }
+
     if (!window.confirm("PERINGATAN: Anda yakin ingin MENGHAPUS SEMUA DATA teacher di seluruh aplikasi? Tindakan ini tidak dapat dibatalkan!")) return;
     
     setIsResetting(true);
