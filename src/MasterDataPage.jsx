@@ -2,6 +2,59 @@ import React, { useState, useMemo, useRef } from "react";
 import Papa from "papaparse";
 import { importMasterTeachers, deleteAllMasterTeachers } from "./masterTeacherService.js";
 
+function getScoreCategory(scoreStr) {
+  if (!scoreStr || scoreStr.trim() === "-" || scoreStr.toLowerCase() === "n/a") {
+    return "Tidak Ada Skor";
+  }
+  const s = scoreStr.toLowerCase().trim();
+  
+  // Try to parse IELTS patterns
+  if (s.includes("ielts")) {
+    const match = s.match(/([4-9](?:[.,]\d)?)/);
+    if (match) {
+      const val = parseFloat(match[1].replace(",", "."));
+      if (val >= 7.5) return "IELTS >= 7.5";
+      if (val >= 6.5) return "IELTS 6.5 - 7.0";
+      return "IELTS < 6.5";
+    }
+  }
+
+  // Check numeric IELTS directly (4.0 to 9.0)
+  const numericIelts = parseFloat(s.replace(",", "."));
+  if (!isNaN(numericIelts) && numericIelts >= 4.0 && numericIelts <= 9.0) {
+    if (numericIelts >= 7.5) return "IELTS >= 7.5";
+    if (numericIelts >= 6.5) return "IELTS 6.5 - 7.0";
+    return "IELTS < 6.5";
+  }
+
+  // Check TOEFL ITP / Paper patterns (310 to 677)
+  if (s.includes("itp") || s.includes("toefl")) {
+    const match = s.match(/([4-6]\d{2})/);
+    if (match) {
+      const val = parseInt(match[1], 10);
+      if (val >= 600) return "TOEFL ITP >= 600";
+      if (val >= 550) return "TOEFL ITP 550 - 599";
+      return "TOEFL ITP < 550";
+    }
+  }
+
+  const numericToefl = parseInt(s, 10);
+  if (!isNaN(numericToefl)) {
+    if (numericToefl >= 310 && numericToefl <= 677) {
+      if (numericToefl >= 600) return "TOEFL ITP >= 600";
+      if (numericToefl >= 550) return "TOEFL ITP 550 - 599";
+      return "TOEFL ITP < 550";
+    }
+    // TOEFL iBT range
+    if (numericToefl >= 80 && numericToefl <= 120) {
+      if (numericToefl >= 100) return "TOEFL iBT >= 100";
+      return "TOEFL iBT < 100";
+    }
+  }
+
+  return "Lainnya";
+}
+
 function DetailModal({ tutor, onClose }) {
   if (!tutor) return null;
 
@@ -151,6 +204,7 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
   const [filterEdu, setFilterEdu] = useState("Semua");
   const [filterSlms, setFilterSlms] = useState("Semua");
   const [filterGender, setFilterGender] = useState("Semua");
+  const [filterScore, setFilterScore] = useState("Semua");
   const [selectedTutor, setSelectedTutor] = useState(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -289,6 +343,15 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
       if (filterSlms !== "Semua" && t.slmsStatus !== filterSlms) return false;
       if (filterGender !== "Semua" && t.gender !== filterGender) return false;
 
+      if (filterScore !== "Semua") {
+        const cat = getScoreCategory(t.overallScore);
+        if (filterScore === "Lainnya / Tanpa Skor") {
+          if (cat !== "Lainnya" && cat !== "Tidak Ada Skor") return false;
+        } else {
+          if (cat !== filterScore) return false;
+        }
+      }
+
       if (search) {
         const q = search.toLowerCase();
         const matchName = t.name?.toLowerCase().includes(q);
@@ -301,7 +364,7 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
 
       return true;
     });
-  }, [masterTeachers, filterPosisi, filterEdu, filterSlms, filterGender, search]);
+  }, [masterTeachers, filterPosisi, filterEdu, filterSlms, filterGender, filterScore, search]);
 
   // Pagination calculation
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
@@ -440,7 +503,7 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
             </select>
           </div>
 
-          {/* Gender Filter */}
+           {/* Gender Filter */}
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>Jenis Kelamin</label>
             <select value={filterGender} onChange={e => handleFilterChange(setFilterGender, e.target.value)}
@@ -448,6 +511,24 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
               <option value="Semua">Semua Jenis Kelamin</option>
               <option value="Laki-Laki">Laki-Laki</option>
               <option value="Perempuan">Perempuan</option>
+            </select>
+          </div>
+
+          {/* Overall Score Filter */}
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>Overall Score (Eng Test)</label>
+            <select value={filterScore} onChange={e => handleFilterChange(setFilterScore, e.target.value)}
+              style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
+              <option value="Semua">Semua Skor</option>
+              <option value="IELTS >= 7.5">IELTS &gt;= 7.5</option>
+              <option value="IELTS 6.5 - 7.0">IELTS 6.5 - 7.0</option>
+              <option value="IELTS < 6.5">IELTS &lt; 6.5</option>
+              <option value="TOEFL ITP >= 600">TOEFL ITP &gt;= 600</option>
+              <option value="TOEFL ITP 550 - 599">TOEFL ITP 550 - 599</option>
+              <option value="TOEFL ITP < 550">TOEFL ITP &lt; 550</option>
+              <option value="TOEFL iBT >= 100">TOEFL iBT &gt;= 100</option>
+              <option value="TOEFL iBT < 100">TOEFL iBT &lt; 100</option>
+              <option value="Lainnya / Tanpa Skor">Lainnya / Tanpa Skor</option>
             </select>
           </div>
         </div>

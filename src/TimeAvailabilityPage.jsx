@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import { db } from "./firebase.js";
 import { collection, doc, getDocs, writeBatch, setDoc, onSnapshot } from "firebase/firestore";
 import { importTimeAvailability, deleteAllTimeAvailability } from "./timeAvailabilityService.js";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
 // Helper function to calculate percentile
 function getPercentile(arr, p) {
@@ -510,8 +511,8 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
         </div>
       </div>
 
-      {/* Percentile Info Bar & Detailed Explanations */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 20, marginBottom: 24 }}>
+      {/* Percentile Info Bar, Pie Chart, & Detailed Explanations */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, marginBottom: 24 }}>
         
         {/* Dynamic Percentile Value Summary */}
         <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
@@ -537,27 +538,121 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </div>
         </div>
 
+        {/* Recharts Pie Chart Category Distribution */}
+        {(() => {
+          const pieData = [
+            { name: "Very High", value: metrics.counts5["Very High Availability"] || 0, color: "#10B981" },
+            { name: "High",      value: metrics.counts5["High Availability"] || 0,      color: "#3B82F6" },
+            { name: "Moderate",  value: metrics.counts5["Moderate"] || 0,               color: "#F59E0B" },
+            { name: "Low",       value: metrics.counts5["Low Availability"] || 0,       color: "#EF4444" },
+            { name: "Very Low",  value: metrics.counts5["Very Low Availability"] || 0,  color: "#7F1D1D" },
+          ].filter(item => item.value > 0);
+
+          return (
+            <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", minHeight: 220, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+                📊 Diagram Lingkaran Distribusi Availability
+              </div>
+              {classifiedData.length === 0 ? (
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94A3B8", fontSize: 12 }}>
+                  Belum ada data untuk ditampilkan
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ width: 120, height: 120 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={25}
+                          outerRadius={50}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => [`${value} Tutor`, "Jumlah"]} contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 600, flex: 1, marginLeft: 16 }}>
+                    {pieData.map(item => (
+                      <div key={item.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color }} />
+                          <span style={{ color: "#475569" }}>{item.name}</span>
+                        </div>
+                        <span style={{ color: "#0F172A", fontWeight: 700 }}>
+                          {item.value} ({Math.round((item.value / classifiedData.length) * 100)}%)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Translation and Explanation of Percentiles */}
         <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
             💡 Arti & Maksud Persentil Ketersediaan Waktu (Percentile Meaning)
           </div>
-          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.5, display: "flex", flexDirection: "column", gap: 6 }}>
             <div>
-              • <strong>P20 ({percentiles.p20.toFixed(1)} Sesi)</strong>: Memisahkan 20% tutor dengan sesi mengajar paling sedikit. Mereka memiliki ketersediaan waktu sangat luang (<strong>Very High Availability</strong>).
+              • <strong>P20 ({percentiles.p20.toFixed(1)} Sesi)</strong>: Memisahkan 20% tutor dengan sesi paling sedikit (<strong>Very High Availability</strong>).
             </div>
             <div>
-              • <strong>P40 ({percentiles.p40.toFixed(1)} Sesi)</strong>: Tutor dengan rata-rata sesi mengajar antara P20 hingga P40 diklasifikasikan sebagai <strong>High Availability</strong>.
+              • <strong>P40 ({percentiles.p40.toFixed(1)} Sesi)</strong>: Rata-rata sesi P20 - P40 diklasifikasikan sebagai <strong>High Availability</strong>.
             </div>
             <div>
-              • <strong>P60 ({percentiles.p60.toFixed(1)} Sesi)</strong>: Tutor dengan rata-rata sesi antara P40 hingga P60 diklasifikasikan sebagai <strong>Moderate Availability</strong>.
+              • <strong>P60 ({percentiles.p60.toFixed(1)} Sesi)</strong>: Rata-rata sesi P40 - P60 diklasifikasikan sebagai <strong>Moderate Availability</strong>.
             </div>
             <div>
-              • <strong>P80 ({percentiles.p80.toFixed(1)} Sesi)</strong>: Tutor dengan rata-rata sesi antara P60 hingga P80 diklasifikasikan sebagai <strong>Low Availability</strong>. Tutor yang melebihi P80 memiliki sesi mengajar terbanyak, sehingga diklasifikasikan sebagai <strong>Very Low Availability</strong>.
+              • <strong>P80 ({percentiles.p80.toFixed(1)} Sesi)</strong>: Rata-rata sesi P60 - P80 diklasifikasikan sebagai <strong>Low Availability</strong>. Di atas P80 (sesi terbanyak) diklasifikasikan sebagai <strong>Very Low Availability</strong>.
             </div>
           </div>
         </div>
 
+      </div>
+
+      {/* Global Filter Toolbar */}
+      <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14 }}>
+          🔍 Pencarian & Filter Ketersediaan Waktu (Heatmap & Tabel)
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+          {/* Search Box */}
+          <div style={{ position: "relative" }}>
+            <input value={search} onChange={e => handleFilterChange(setSearch, e.target.value)} placeholder="Cari nama tutor..."
+              style={{ width: "100%", padding: "9px 12px 9px 34px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", boxSizing: "border-box" }} />
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94A3B8", fontSize: 14 }}>🔍</span>
+          </div>
+
+          {/* Tutor Type Filter */}
+          <select value={filterType} onChange={e => handleFilterChange(setFilterType, e.target.value)}
+            style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
+            <option value="Semua">Semua Tutor Type ({filterOptions.length})</option>
+            {filterOptions.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+
+          {/* Availability Category Filter */}
+          <select value={filterClass5} onChange={e => handleFilterChange(setFilterClass5, e.target.value)}
+            style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
+            <option value="Semua">Semua Availability</option>
+            <option value="Very High Availability">Very High Availability (Sesi Sedikit)</option>
+            <option value="High Availability">High Availability</option>
+            <option value="Moderate">Moderate Availability</option>
+            <option value="Low Availability">Low Availability</option>
+            <option value="Very Low Availability">Very Low Availability (Sesi Banyak)</option>
+          </select>
+        </div>
       </div>
 
       {/* Visual Analytics Selector */}
@@ -672,33 +767,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </div>
         </div>
 
-        {/* Filter Toolbar (Inside Table View) */}
-        <div style={{ padding: "14px 24px", background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-          {/* Search Box */}
-          <div style={{ position: "relative" }}>
-            <input value={search} onChange={e => handleFilterChange(setSearch, e.target.value)} placeholder="Cari nama tutor..."
-              style={{ width: "100%", padding: "8px 12px 8px 32px", border: "1.5px solid #E2E8F0", borderRadius: 8, fontSize: 12, outline: "none", background: "#FFF", boxSizing: "border-box" }} />
-            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94A3B8", fontSize: 13 }}>🔍</span>
-          </div>
-
-          {/* Tutor Type Filter */}
-          <select value={filterType} onChange={e => handleFilterChange(setFilterType, e.target.value)}
-            style={{ padding: "8px 12px", border: "1.5px solid #E2E8F0", borderRadius: 8, fontSize: 12, outline: "none", background: "#FFF", cursor: "pointer" }}>
-            <option value="Semua">Semua Tutor Type ({filterOptions.length})</option>
-            {filterOptions.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-
-          {/* Availability Category Filter */}
-          <select value={filterClass5} onChange={e => handleFilterChange(setFilterClass5, e.target.value)}
-            style={{ padding: "8px 12px", border: "1.5px solid #E2E8F0", borderRadius: 8, fontSize: 12, outline: "none", background: "#FFF", cursor: "pointer" }}>
-            <option value="Semua">Semua Availability</option>
-            <option value="Very High Availability">Very High Availability (Sesi Sedikit)</option>
-            <option value="High Availability">High Availability</option>
-            <option value="Moderate">Moderate Availability</option>
-            <option value="Low Availability">Low Availability</option>
-            <option value="Very Low Availability">Very Low Availability (Sesi Banyak)</option>
-          </select>
-        </div>
+        {/* No local Filter Toolbar here anymore as it is moved globally above */}
 
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1000 }}>
