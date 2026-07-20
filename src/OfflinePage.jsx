@@ -171,7 +171,7 @@ function EditModal({ teacher, onSave, onClose }) {
     { key: "inspection",  label: "Class Inspection (0–100)", type: "number", min: 0, max: 100 },
     { key: "compliance",  label: "Compliance (0–100)",       type: "number", min: 0, max: 100 },
     { key: "gantiTutor",  label: "Ganti Tutor Count",        type: "number", min: 0, max: 10  },
-    { key: "availability",label: "Tingkat Availability",     type: "select", opts: ["High", "Medium", "Moderate", "Low"] },
+    { key: "availability",label: "Tingkat Availability",     type: "select", opts: ["Very High", "High", "Moderate", "Low", "Very Low"] },
   ];
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>

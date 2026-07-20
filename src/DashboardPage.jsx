@@ -262,7 +262,7 @@ function EditModal({ teacher, onSave, onClose }) {
     { key: "compliance",  label: "Compliance (0–100)",       type: "number", min: 0, max: 100 },
     { key: "gantiTutor",  label: "Ganti Tutor Count",        type: "number", min: 0, max: 10  },
     { key: "identifier",  label: "Identifier Tutor",         type: "select", opts: ["Baru", "Lama"] },
-    { key: "availability",label: "Tingkat Availability",     type: "select", opts: ["High", "Medium", "Moderate"] },
+    { key: "availability",label: "Tingkat Availability",     type: "select", opts: ["Very High", "High", "Moderate", "Low", "Very Low"] },
   ];
 
   const inputStyle = {

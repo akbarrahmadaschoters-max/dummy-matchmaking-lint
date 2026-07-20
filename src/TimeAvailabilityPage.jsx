@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import Papa from "papaparse";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
+import { db } from "./firebase.js";
+import { collection, doc, getDocs, writeBatch, setDoc, onSnapshot } from "firebase/firestore";
 import { importTimeAvailability, deleteAllTimeAvailability } from "./timeAvailabilityService.js";
 
 // Helper function to calculate percentile
@@ -19,32 +20,167 @@ function getPercentile(arr, p) {
 
 // 5-category styling
 const CATEGORY_5_CONFIG = {
-  "Very High Availability": { label: "🟢 Very High Availability", color: "#10B981", bg: "#F0FDF4", border: "#BBF7D0", text: "#15803D" },
-  "High Availability":      { label: "🟢 High Availability",      color: "#3B82F6", bg: "#EFF6FF", border: "#BFDBFE", text: "#1D4ED8" },
-  "Moderate":               { label: "🟡 Moderate Availability",  color: "#F59E0B", bg: "#FFFBEB", border: "#FDE68A", text: "#B45309" },
-  "Low Availability":       { label: "🔴 Low Availability",       color: "#EF4444", bg: "#FEF2F2", border: "#FECACA", text: "#B91C1C" },
-  "Very Low Availability":  { label: "🔴 Very Low Availability",  color: "#7F1D1D", bg: "#FFF5F5", border: "#FEB2B2", text: "#7F1D1D" },
+  "Very High Availability": { label: "Very High", color: "#10B981", bg: "#F0FDF4", border: "#BBF7D0", text: "#15803D", desc: "Sesi mengajar sedikit, ketersediaan waktu sangat longgar." },
+  "High Availability":      { label: "High",      color: "#3B82F6", bg: "#EFF6FF", border: "#BFDBFE", text: "#1D4ED8", desc: "Sesi mengajar di bawah rata-rata, ketersediaan waktu luang." },
+  "Moderate":               { label: "Moderate",  color: "#F59E0B", bg: "#FFFBEB", border: "#FDE68A", text: "#B45309", desc: "Jumlah sesi normal, ketersediaan waktu sedang." },
+  "Low Availability":       { label: "Low",       color: "#EF4444", bg: "#FEF2F2", border: "#FECACA", text: "#B91C1C", desc: "Jadwal padat, ketersediaan waktu terbatas." },
+  "Very Low Availability":  { label: "Very Low",  color: "#7F1D1D", bg: "#FFF5F5", border: "#FEB2B2", text: "#7F1D1D", desc: "Sesi mengajar sangat banyak, ketersediaan waktu hampir habis." },
 };
 
-// 3-category styling
-const CATEGORY_3_CONFIG = {
-  "High Availability":   { label: "🟢 High Availability",   color: "#10B981", bg: "#F0FDF4", border: "#BBF7D0", text: "#15803D" },
-  "Medium Availability": { label: "🟡 Medium Availability", color: "#F59E0B", bg: "#FFFBEB", border: "#FDE68A", text: "#B45309" },
-  "Low Availability":    { label: "🔴 Low Availability",    color: "#EF4444", bg: "#FEF2F2", border: "#FECACA", text: "#B91C1C" },
-};
+function CalculationDetailModal({ tutor, percentiles, onClose }) {
+  if (!tutor) return null;
+
+  const avg = tutor.average;
+  const c5 = CATEGORY_5_CONFIG[tutor.class5] || { label: tutor.class5, color: "#475569", bg: "#F8FAFC", border: "#E2E8F0", text: "#0F172A", desc: "" };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 60,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+      backdropFilter: "blur(4px)"
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: "#FFFFFF", borderRadius: 20, width: "100%", maxWidth: 540,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.2)", overflow: "hidden", display: "flex", flexDirection: "column"
+      }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, background: "#EEF2FF", color: "#4F46E5", padding: "3px 8px", borderRadius: 6, textTransform: "uppercase" }}>
+              Analisis Time Availability
+            </span>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", marginTop: 6 }}>{tutor.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "#F1F5F9", border: "none", borderRadius: "50%", width: 30, height: 30, fontSize: 18, color: "#64748B", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 18 }}>
+          
+          {/* Sesi Bulanan */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+              Riwayat Sesi 4 Bulan (Payroll)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+              {[
+                { label: "Maret", val: tutor.march },
+                { label: "April", val: tutor.april },
+                { label: "Mei", val: tutor.may },
+                { label: "Juni", val: tutor.june },
+              ].map((m, idx) => (
+                <div key={idx} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "8px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "#64748B", fontWeight: 600 }}>{m.label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", marginTop: 3 }}>{m.val} sesi</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Formula Rata-rata */}
+          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "12px 16px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>Perhitungan Rata-rata Sesi</div>
+            <div style={{ fontSize: 13, color: "#475569", marginTop: 4, fontFamily: "monospace" }}>
+              ({tutor.march} + {tutor.april} + {tutor.may} + {tutor.june}) / 4 = <span style={{ fontWeight: 800, color: "#4F46E5" }}>{avg.toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Scale / Percentile Position */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+              Posisi di Antara Batas Persentil
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {/* Visual Scale Bar */}
+              <div style={{ height: 10, background: "#E2E8F0", borderRadius: 99, position: "relative", marginTop: 15, marginBottom: 15 }}>
+                {/* P20 Marker */}
+                <div style={{ position: "absolute", left: "20%", top: -14, fontSize: 9, fontWeight: 700, color: "#94A3B8" }}>P20 ({percentiles.p20.toFixed(1)})</div>
+                <div style={{ position: "absolute", left: "20%", height: "100%", width: 2, background: "#CBD5E1" }} />
+                
+                {/* P40 Marker */}
+                <div style={{ position: "absolute", left: "40%", top: -14, fontSize: 9, fontWeight: 700, color: "#94A3B8" }}>P40 ({percentiles.p40.toFixed(1)})</div>
+                <div style={{ position: "absolute", left: "40%", height: "100%", width: 2, background: "#CBD5E1" }} />
+
+                {/* P60 Marker */}
+                <div style={{ position: "absolute", left: "60%", top: -14, fontSize: 9, fontWeight: 700, color: "#94A3B8" }}>P60 ({percentiles.p60.toFixed(1)})</div>
+                <div style={{ position: "absolute", left: "60%", height: "100%", width: 2, background: "#CBD5E1" }} />
+
+                {/* P80 Marker */}
+                <div style={{ position: "absolute", left: "80%", top: -14, fontSize: 9, fontWeight: 700, color: "#94A3B8" }}>P80 ({percentiles.p80.toFixed(1)})</div>
+                <div style={{ position: "absolute", left: "80%", height: "100%", width: 2, background: "#CBD5E1" }} />
+
+                {/* Current Value Pointer */}
+                {(() => {
+                  const maxVal = Math.max(percentiles.p80 * 1.3, avg);
+                  const leftPercent = maxVal > 0 ? Math.min(96, (avg / maxVal) * 100) : 0;
+                  return (
+                    <div style={{
+                      position: "absolute", left: `${leftPercent}%`, top: -6, transform: "translateX(-50%)",
+                      width: 22, height: 22, borderRadius: "50%", background: c5.color, border: "2px solid #FFF",
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center",
+                      color: "#FFF", fontSize: 9, fontWeight: 800
+                    }} title={`Rata-rata: ${avg.toFixed(2)}`}>
+                      ★
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Text explanation */}
+              <div style={{ background: c5.bg, border: `1px solid ${c5.border}`, borderRadius: 12, padding: "14px 16px", marginTop: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: c5.text }}>Kategori: {c5.label} Availability</span>
+                  <span style={{ fontSize: 11, background: "#FFF", border: `1px solid ${c5.border}`, color: c5.text, padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>
+                    Sesi: {avg.toFixed(2)}
+                  </span>
+                </div>
+                <p style={{ margin: "8px 0 0", fontSize: 12, color: c5.text, lineHeight: 1.5 }}>
+                  {c5.desc}
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "12px 24px", borderTop: "1px solid #F1F5F9", background: "#F8FAFC", display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 9, background: "#FFF", border: "1.5px solid #E2E8F0", color: "#475569", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTimeAvailabilityData }) {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("Semua");
   const [filterClass5, setFilterClass5] = useState("Semua");
-  const [filterClass3, setFilterClass3] = useState("Semua");
+  const [selectedTutor, setSelectedTutor] = useState(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSynced, setIsSynced] = useState(false);
+  const [viewMode, setViewMode] = useState("heatmap"); // "heatmap" or "table"
 
   const fileInputRef = useRef(null);
+
+  // Sync state observer
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "sync_status", "time_availability"), (docSnap) => {
+      if (docSnap.exists()) {
+        setIsSynced(docSnap.data().synced);
+      } else {
+        setIsSynced(false);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Template CSV Download
   const downloadTemplate = () => {
@@ -95,7 +231,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
               average: avg
             });
           } catch (err) {
-            console.error(`Error parsing Intertest row ${idx + 2}:`, err);
+            console.error(`Error parsing row ${idx + 2}:`, err);
           }
         });
 
@@ -134,7 +270,8 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
 
     try {
       await deleteAllTimeAvailability();
-      alert("✅ Semua data time availability tutor berhasil dihapus dari database Firestore.");
+      await setDoc(doc(db, "sync_status", "time_availability"), { synced: false, unsyncedAt: new Date().toISOString() });
+      alert("✅ Semua data time availability tutor berhasil dihapus.");
     } catch (e) {
       console.error("Gagal menghapus data:", e);
       alert("❌ Gagal mereset data: " + e.message);
@@ -143,19 +280,100 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     }
   };
 
+  // Bulk Sync to main dashboard and offline dashboard
+  const handleSync = async () => {
+    if (!window.confirm("Apakah Anda yakin ingin MENYELARASKAN ketersediaan waktu tutor ini ke Main Dashboard dan Offline Dashboard secara massal?")) {
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const snapshot = await getDocs(collection(db, "teachers"));
+      const teachersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const batch = writeBatch(db);
+      let updatedCount = 0;
+
+      teachersList.forEach(t => {
+        const match = classifiedData.find(avail => avail.name.toLowerCase().trim() === t.name.toLowerCase().trim());
+        if (match) {
+          const mappedAvailability = match.class5.replace(" Availability", ""); // "Very High", "High", "Moderate", "Low", "Very Low"
+          const docRef = doc(db, "teachers", t.id);
+
+          batch.update(docRef, {
+            prevAvailability: t.availability || "Moderate",
+            availability: mappedAvailability
+          });
+          updatedCount++;
+        }
+      });
+
+      if (updatedCount > 0) {
+        await batch.commit();
+        await setDoc(doc(db, "sync_status", "time_availability"), { synced: true, syncedAt: new Date().toISOString(), count: updatedCount });
+        alert(`✅ Berhasil menyelaraskan ketersediaan waktu untuk ${updatedCount} tutor ke Main & Offline Dashboard!`);
+      } else {
+        alert("ℹ Tidak ada nama tutor yang cocok di Main Dashboard untuk diselaraskan.");
+      }
+    } catch (err) {
+      console.error("Gagal melakukan sinkronisasi:", err);
+      alert("❌ Gagal sinkronisasi: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Cancel / Undo Sync
+  const handleUndoSync = async () => {
+    if (!window.confirm("Apakah Anda yakin ingin MEMBATALKAN sinkronisasi ketersediaan waktu dan mengembalikannya ke nilai semula?")) {
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const snapshot = await getDocs(collection(db, "teachers"));
+      const teachersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const batch = writeBatch(db);
+      let restoredCount = 0;
+
+      teachersList.forEach(t => {
+        if (t.prevAvailability) {
+          const docRef = doc(db, "teachers", t.id);
+          batch.update(docRef, {
+            availability: t.prevAvailability,
+            prevAvailability: null
+          });
+          restoredCount++;
+        }
+      });
+
+      if (restoredCount > 0) {
+        await batch.commit();
+        await setDoc(doc(db, "sync_status", "time_availability"), { synced: false, unsyncedAt: new Date().toISOString() });
+        alert(`✅ Berhasil membatalkan sinkronisasi. ${restoredCount} tutor telah dikembalikan ke ketersediaan waktu semula.`);
+      } else {
+        alert("ℹ Tidak ada data sinkronisasi sebelumnya yang bisa dibatalkan.");
+      }
+    } catch (err) {
+      console.error("Gagal membatalkan sinkronisasi:", err);
+      alert("❌ Error: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // 1. Calculate Dynamic Percentiles based on Average sessions
   const percentiles = useMemo(() => {
     const averages = timeAvailabilityData.map(t => Number(t.average) || 0);
     if (averages.length === 0) {
-      return { p20: 0, p40: 0, p60: 0, p80: 0, p33: 0, p66: 0 };
+      return { p20: 0, p40: 0, p60: 0, p80: 0 };
     }
     return {
       p20: getPercentile(averages, 20),
       p40: getPercentile(averages, 40),
       p60: getPercentile(averages, 60),
-      p80: getPercentile(averages, 80),
-      p33: getPercentile(averages, 33),
-      p66: getPercentile(averages, 66)
+      p80: getPercentile(averages, 80)
     };
   }, [timeAvailabilityData]);
 
@@ -164,7 +382,6 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     return timeAvailabilityData.map(t => {
       const avg = Number(t.average) || 0;
       let class5 = "Very High Availability";
-      let class3 = "High Availability";
 
       // 5 Categories: Lower average sessions -> Higher availability
       if (avg <= percentiles.p20) {
@@ -179,16 +396,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
         class5 = "Very Low Availability";
       }
 
-      // 3 Categories: P33 and P66
-      if (avg <= percentiles.p33) {
-        class3 = "High Availability";
-      } else if (avg <= percentiles.p66) {
-        class3 = "Medium Availability";
-      } else {
-        class3 = "Low Availability";
-      }
-
-      return { ...t, class5, class3 };
+      return { ...t, class5 };
     });
   }, [timeAvailabilityData, percentiles]);
 
@@ -206,7 +414,6 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     return classifiedData.filter(t => {
       if (filterType !== "Semua" && t.type !== filterType) return false;
       if (filterClass5 !== "Semua" && t.class5 !== filterClass5) return false;
-      if (filterClass3 !== "Semua" && t.class3 !== filterClass3) return false;
 
       if (search) {
         const q = search.toLowerCase();
@@ -215,7 +422,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
 
       return true;
     }).sort((a, b) => a.average - b.average); // Sort by average sessions asc (lowest sessions / highest availability first)
-  }, [classifiedData, filterType, filterClass5, filterClass3, search]);
+  }, [classifiedData, filterType, filterClass5, search]);
 
   // Pagination calculation
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
@@ -251,32 +458,38 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     return { counts5, averageSessions };
   }, [classifiedData]);
 
-  // Chart data preparation
-  const chartData = useMemo(() => {
-    return [
-      { name: "Very High", count: metrics.counts5["Very High Availability"], color: "#10B981" },
-      { name: "High",      count: metrics.counts5["High Availability"],      color: "#3B82F6" },
-      { name: "Moderate",  count: metrics.counts5["Moderate"],               color: "#F59E0B" },
-      { name: "Low",       count: metrics.counts5["Low Availability"],       color: "#EF4444" },
-      { name: "Very Low",  count: metrics.counts5["Very Low Availability"],  color: "#7F1D1D" },
-    ];
-  }, [metrics]);
-
   return (
     <div>
       {/* Page Title & Actions Header */}
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Tutor Time Availability Analysis</h1>
-          <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Analisis ketersediaan waktu berdasarkan rata-rata sesi mengajar (Percentiles: P20, P40, P60, P80 & P33, P66)</p>
+          <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Analisis ketersediaan waktu berdasarkan rata-rata sesi mengajar (Percentiles: P20, P40, P60, P80)</p>
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {isSynced ? (
+            <button disabled={isSyncing} onClick={handleUndoSync} style={{
+              background: "#FFFbeb", color: "#D97706", border: "1.5px solid #FDE68A", borderRadius: 10,
+              padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isSyncing ? "not-allowed" : "pointer", transition: "all 0.15s"
+            }}>
+              {isSyncing ? "⏳ Memproses..." : "↩ Batalkan Sinkronisasi"}
+            </button>
+          ) : (
+            <button disabled={isSyncing || timeAvailabilityData.length === 0} onClick={handleSync} style={{
+              background: "#4F46E5", color: "#FFF", border: "none", borderRadius: 10,
+              padding: "11px 18px", fontSize: 13, fontWeight: 700, cursor: (isSyncing || timeAvailabilityData.length === 0) ? "not-allowed" : "pointer", transition: "all 0.15s",
+              boxShadow: "0 4px 12px rgba(79,70,229,0.25)"
+            }}>
+              {isSyncing ? "⏳ Mensinkronkan..." : "🔗 Sinkronkan ke Dashboard"}
+            </button>
+          )}
+
           <button disabled={isResetting} onClick={handleResetData} style={{
             background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
             padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: isResetting ? 0.6 : 1
           }}>
-            {isResetting ? "Memproses..." : "🗑 Perbarui / Hapus Data"}
+            {isResetting ? "Memproses..." : "🗑 Perbarui Data"}
           </button>
 
           <button onClick={downloadTemplate} style={{
@@ -288,142 +501,163 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
 
           <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
           <button disabled={isImporting} onClick={() => fileInputRef.current?.click()} style={{
-            background: "#6366F1", color: "#FFF", border: "none", borderRadius: 10,
+            background: "#10B981", color: "#FFF", border: "none", borderRadius: 10,
             padding: "11px 20px", fontSize: 13, fontWeight: 700, cursor: isImporting ? "not-allowed" : "pointer",
-            boxShadow: "0 4px 12px rgba(99,102,241,0.25)"
+            boxShadow: "0 4px 12px rgba(16,185,129,0.25)"
           }}>
             {isImporting ? "⏳ Mengimpor..." : "📤 Upload CSV Sessions"}
           </button>
         </div>
       </div>
 
-      {/* Percentile Info Bar & Key Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
+      {/* Percentile Info Bar & Detailed Explanations */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 20, marginBottom: 24 }}>
         
         {/* Dynamic Percentile Value Summary */}
         <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
-            📐 Nilai Batas Persentil Dinamis (Average Sesi)
+            📐 Nilai Batas Persentil Dinamis (Rata-rata Sesi)
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
             {[
-              { label: "P20", val: percentiles.p20.toFixed(2), desc: "Very High" },
-              { label: "P40", val: percentiles.p40.toFixed(2), desc: "High" },
-              { label: "P60", val: percentiles.p60.toFixed(2), desc: "Moderate" },
-              { label: "P80", val: percentiles.p80.toFixed(2), desc: "Low" },
-              { label: "P33", val: percentiles.p33.toFixed(2), desc: "3-Cat Low" },
-              { label: "P66", val: percentiles.p66.toFixed(2), desc: "3-Cat High" },
+              { label: "P20 (Persentil 20)", val: percentiles.p20.toFixed(2), color: "#10B981" },
+              { label: "P40 (Persentil 40)", val: percentiles.p40.toFixed(2), color: "#3B82F6" },
+              { label: "P60 (Persentil 60)", val: percentiles.p60.toFixed(2), color: "#F59E0B" },
+              { label: "P80 (Persentil 80)", val: percentiles.p80.toFixed(2), color: "#EF4444" },
             ].map((p, idx) => (
-              <div key={idx} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "#4F46E5" }}>{p.label}</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A", marginTop: 3 }}>{p.val}</div>
-                <div style={{ fontSize: 9, color: "#64748B", marginTop: 2 }}>{p.desc}</div>
+              <div key={idx} style={{ background: "#F8FAFC", border: `1.5px solid ${p.color}25`, borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: p.color }}>{p.label.split(" ")[0]}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{p.val}</div>
+                <div style={{ fontSize: 10, color: "#64748B", marginTop: 3 }}>Sesi / Bulan</div>
               </div>
             ))}
           </div>
           <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 10, fontStyle: "italic" }}>
-            * Persentil dihitung otomatis dari nilai Rata-rata Sesi seluruh tutor.
+            * Batas persentil dihitung secara dinamis berdasarkan data sesi rata-rata seluruh tutor yang diunggah.
           </div>
         </div>
 
-        {/* High-level Metrics */}
-        <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", display: "flex", gap: 16 }}>
-          <div style={{ flex: 1, borderRight: "1px solid #F1F5F9" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>Tutor Teranalisis</div>
-            <div style={{ fontSize: 36, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{classifiedData.length}</div>
-            <div style={{ fontSize: 12, color: "#64748B", marginTop: 6 }}>Tutor aktif terdaftar</div>
+        {/* Translation and Explanation of Percentiles */}
+        <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+            💡 Arti & Maksud Persentil Ketersediaan Waktu (Percentile Meaning)
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>Rata-rata Sesi Pool</div>
-            <div style={{ fontSize: 36, fontWeight: 800, color: "#4F46E5", marginTop: 4 }}>{metrics.averageSessions}</div>
-            <div style={{ fontSize: 12, color: "#64748B", marginTop: 6 }}>Sesi per tutor / bulan</div>
+          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div>
+              • <strong>P20 ({percentiles.p20.toFixed(1)} Sesi)</strong>: Memisahkan 20% tutor dengan sesi mengajar paling sedikit. Mereka memiliki ketersediaan waktu sangat luang (<strong>Very High Availability</strong>).
+            </div>
+            <div>
+              • <strong>P40 ({percentiles.p40.toFixed(1)} Sesi)</strong>: Tutor dengan rata-rata sesi mengajar antara P20 hingga P40 diklasifikasikan sebagai <strong>High Availability</strong>.
+            </div>
+            <div>
+              • <strong>P60 ({percentiles.p60.toFixed(1)} Sesi)</strong>: Tutor dengan rata-rata sesi antara P40 hingga P60 diklasifikasikan sebagai <strong>Moderate Availability</strong>.
+            </div>
+            <div>
+              • <strong>P80 ({percentiles.p80.toFixed(1)} Sesi)</strong>: Tutor dengan rata-rata sesi antara P60 hingga P80 diklasifikasikan sebagai <strong>Low Availability</strong>. Tutor yang melebihi P80 memiliki sesi mengajar terbanyak, sehingga diklasifikasikan sebagai <strong>Very Low Availability</strong>.
+            </div>
           </div>
         </div>
 
       </div>
 
-      {/* Visual Chart - Tutor Distribution */}
-      {classifiedData.length > 0 && (
+      {/* Visual Analytics Selector */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 6, background: "#F1F5F9", padding: 4, borderRadius: 10 }}>
+          <button onClick={() => setViewMode("heatmap")} style={{
+            padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer", transition: "all 0.15s",
+            background: viewMode === "heatmap" ? "#FFFFFF" : "transparent",
+            color: viewMode === "heatmap" ? "#0F172A" : "#64748B",
+            boxShadow: viewMode === "heatmap" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+          }}>
+            🌡️ Heatmap Grid View
+          </button>
+          <button onClick={() => setViewMode("table")} style={{
+            padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer", transition: "all 0.15s",
+            background: viewMode === "table" ? "#FFFFFF" : "transparent",
+            color: viewMode === "table" ? "#0F172A" : "#64748B",
+            boxShadow: viewMode === "table" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+          }}>
+            📋 Daftar Tabel View
+          </button>
+        </div>
+
+        <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>
+          {isSynced ? "✅ Data Terintegrasi dengan Main Dashboard" : "❌ Belum Terintegrasi"}
+        </div>
+      </div>
+
+      {/* Heatmap Grid View */}
+      {viewMode === "heatmap" && (
         <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 16 }}>
-            📊 Grafik Distribusi Time Availability Tutor (5 Kategori)
-          </div>
-          <div style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 600, fill: "#475569" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} />
-                <Tooltip cursor={{ fill: "#F8FAFC" }} contentStyle={{ borderRadius: 12, border: "1px solid #E2E8F0" }} />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                🌡️ Availability Heatmap Grid
+              </div>
+              <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+                Setiap kotak mewakili seorang tutor. Warna menunjukkan tingkat availability. Klik kotak untuk melihat detail perhitungan.
+              </div>
+            </div>
 
-      {/* Multi-Category Filters */}
-      <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14 }}>
-          🔍 Filter & Pencarian Ketersediaan Waktu
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
-          {/* Search Box */}
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>Cari Nama Tutor</label>
-            <div style={{ position: "relative" }}>
-              <input value={search} onChange={e => handleFilterChange(setSearch, e.target.value)} placeholder="Tulis nama tutor..."
-                style={{ width: "100%", padding: "9px 12px 9px 34px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
-              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94A3B8", fontSize: 14 }}>🔍</span>
+            {/* Legend */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {Object.entries(CATEGORY_5_CONFIG).map(([key, c]) => (
+                <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600 }}>
+                  <div style={{ width: 14, height: 14, borderRadius: 4, background: c.color }} />
+                  <span style={{ color: "#475569" }}>{c.label}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Tutor Type Filter */}
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>Tutor Type</label>
-            <select value={filterType} onChange={e => handleFilterChange(setFilterType, e.target.value)}
-              style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
-              <option value="Semua">Semua Type ({filterOptions.length})</option>
-              {filterOptions.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-
-          {/* 5-Category Classification Filter */}
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>Availability (5 Kategori)</label>
-            <select value={filterClass5} onChange={e => handleFilterChange(setFilterClass5, e.target.value)}
-              style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
-              <option value="Semua">Semua Kategori</option>
-              <option value="Very High Availability">Very High Availability (Sesi Sedikit)</option>
-              <option value="High Availability">High Availability</option>
-              <option value="Moderate">Moderate Availability</option>
-              <option value="Low Availability">Low Availability</option>
-              <option value="Very Low Availability">Very Low Availability (Sesi Banyak)</option>
-            </select>
-          </div>
-
-          {/* 3-Category Classification Filter */}
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>Availability (3 Kategori)</label>
-            <select value={filterClass3} onChange={e => handleFilterChange(setFilterClass3, e.target.value)}
-              style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
-              <option value="Semua">Semua Kategori</option>
-              <option value="High Availability">High Availability (Sesi &lt;= P33)</option>
-              <option value="Medium Availability">Medium Availability (P33 - P66)</option>
-              <option value="Low Availability">Low Availability (Sesi &gt; P66)</option>
-            </select>
-          </div>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "48px", textAlign: "center", color: "#94A3B8", fontSize: 14 }}>
+              Tidak ada data ketersediaan waktu tutor untuk divisualisasikan. Silakan upload CSV atau ubah filter.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(44px, 1fr))", gap: 6 }}>
+              {filtered.map(t => {
+                const c = CATEGORY_5_CONFIG[t.class5] || { color: "#E2E8F0" };
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelectedTutor(t)}
+                    title={`${t.name} (${t.type})\nRata-rata: ${t.average.toFixed(2)} sesi\nKategori: ${t.class5}`}
+                    style={{
+                      aspectRatio: "1/1",
+                      background: c.color,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#FFFFFF",
+                      fontWeight: 800,
+                      fontSize: 10,
+                      transition: "transform 0.15s, box-shadow 0.15s",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.1)"
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = "scale(1.15) translateY(-2px)";
+                      e.currentTarget.style.boxShadow = "0 6px 12px rgba(0,0,0,0.15)";
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = "scale(1) translateY(0)";
+                      e.currentTarget.style.boxShadow = "0 1px 2px rgba(0,0,0,0.1)";
+                    }}
+                  >
+                    {t.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Table Container */}
-      <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "hidden" }}>
-        <div style={{ padding: "16px 24px", borderBottom: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {/* Multi-Category Filters & Table */}
+      <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "hidden", display: viewMode === "table" ? "block" : "none" }}>
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>
             Menampilkan <span style={{ color: "#0F172A" }}>{filtered.length}</span> dari <span style={{ color: "#0F172A" }}>{classifiedData.length}</span> tutor
           </div>
@@ -438,12 +672,40 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </div>
         </div>
 
+        {/* Filter Toolbar (Inside Table View) */}
+        <div style={{ padding: "14px 24px", background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+          {/* Search Box */}
+          <div style={{ position: "relative" }}>
+            <input value={search} onChange={e => handleFilterChange(setSearch, e.target.value)} placeholder="Cari nama tutor..."
+              style={{ width: "100%", padding: "8px 12px 8px 32px", border: "1.5px solid #E2E8F0", borderRadius: 8, fontSize: 12, outline: "none", background: "#FFF", boxSizing: "border-box" }} />
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94A3B8", fontSize: 13 }}>🔍</span>
+          </div>
+
+          {/* Tutor Type Filter */}
+          <select value={filterType} onChange={e => handleFilterChange(setFilterType, e.target.value)}
+            style={{ padding: "8px 12px", border: "1.5px solid #E2E8F0", borderRadius: 8, fontSize: 12, outline: "none", background: "#FFF", cursor: "pointer" }}>
+            <option value="Semua">Semua Tutor Type ({filterOptions.length})</option>
+            {filterOptions.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+
+          {/* Availability Category Filter */}
+          <select value={filterClass5} onChange={e => handleFilterChange(setFilterClass5, e.target.value)}
+            style={{ padding: "8px 12px", border: "1.5px solid #E2E8F0", borderRadius: 8, fontSize: 12, outline: "none", background: "#FFF", cursor: "pointer" }}>
+            <option value="Semua">Semua Availability</option>
+            <option value="Very High Availability">Very High Availability (Sesi Sedikit)</option>
+            <option value="High Availability">High Availability</option>
+            <option value="Moderate">Moderate Availability</option>
+            <option value="Low Availability">Low Availability</option>
+            <option value="Very Low Availability">Very Low Availability (Sesi Banyak)</option>
+          </select>
+        </div>
+
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1100 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1000 }}>
             <thead>
               <tr style={{ background: "#F8FAFC", borderBottom: "1.5px solid #E2E8F0" }}>
-                {["#", "Nama Tutor", "Tutor Type", "March", "April", "May", "June", "Grand Total", "Average Sesi", "Classification (5)", "Classification (3)"].map(h => (
-                  <th key={h} style={{ padding: "12px 16px", textAlign: h === "#" || h === "Average Sesi" || h.includes("Classification") || h === "Grand Total" ? "center" : "left", fontWeight: 700, fontSize: 11, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                {["#", "Nama Tutor", "Tutor Type", "March", "April", "May", "June", "Grand Total", "Average Sesi", "Classification", "Action"].map(h => (
+                  <th key={h} style={{ padding: "12px 16px", textAlign: h === "#" || h === "Average Sesi" || h.includes("Classification") || h === "Grand Total" || h === "Action" ? "center" : "left", fontWeight: 700, fontSize: 11, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -451,16 +713,13 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
               {paginatedData.length === 0 ? (
                 <tr>
                   <td colSpan={11} style={{ padding: "48px 20px", textAlign: "center", color: "#94A3B8" }}>
-                    {classifiedData.length === 0
-                      ? "Belum ada data ketersediaan waktu. Silakan klik tombol 'Upload CSV Sessions' di atas untuk mengimpor file."
-                      : "Tidak ada data tutor yang cocok dengan filter pencarian."}
+                    Tidak ada data tutor yang cocok dengan kriteria pencarian.
                   </td>
                 </tr>
               ) : (
                 paginatedData.map((t, i) => {
                   const globalRank = (currentPage - 1) * pageSize + i + 1;
                   const c5 = CATEGORY_5_CONFIG[t.class5] || { label: t.class5, bg: "#FFF", border: "#E2E8F0", text: "#0F172A" };
-                  const c3 = CATEGORY_3_CONFIG[t.class3] || { label: t.class3, bg: "#FFF", border: "#E2E8F0", text: "#0F172A" };
 
                   return (
                     <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.15s" }}
@@ -485,21 +744,18 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
                           color: c5.text,
                           border: `1px solid ${c5.border}`,
                           borderRadius: 6, padding: "3px 9px", fontSize: 11, fontWeight: 700,
-                          display: "inline-block", minWidth: 150
+                          display: "inline-block", minWidth: 155
                         }}>
-                          {c5.label.replace("🟢 ", "").replace("🟡 ", "").replace("🔴 ", "")}
+                          {c5.label} Availability
                         </span>
                       </td>
                       <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                        <span style={{
-                          background: c3.bg,
-                          color: c3.text,
-                          border: `1px solid ${c3.border}`,
-                          borderRadius: 6, padding: "3px 9px", fontSize: 11, fontWeight: 700,
-                          display: "inline-block", minWidth: 140
+                        <button onClick={() => setSelectedTutor(t)} style={{
+                          padding: "5px 12px", borderRadius: 8, border: "1.5px solid #C7D2FE",
+                          background: "#EEF2FF", color: "#4F46E5", fontWeight: 700, cursor: "pointer", fontSize: 12
                         }}>
-                          {c3.label.replace("🟢 ", "").replace("🟡 ", "").replace("🔴 ", "")}
-                        </span>
+                          Detail
+                        </button>
                       </td>
                     </tr>
                   );
@@ -532,6 +788,11 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </div>
         )}
       </div>
+
+      {/* Tutor Detail Calculation Modal */}
+      {selectedTutor && (
+        <CalculationDetailModal tutor={selectedTutor} percentiles={percentiles} onClose={() => setSelectedTutor(null)} />
+      )}
     </div>
   );
 }
