@@ -3,7 +3,7 @@ import Papa from "papaparse";
 import { db } from "./firebase.js";
 import { collection, doc, getDocs, writeBatch, setDoc, onSnapshot } from "firebase/firestore";
 import { importTimeAvailability, deleteAllTimeAvailability } from "./timeAvailabilityService.js";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
 
 // Helper function to calculate percentile
@@ -466,6 +466,16 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     return { counts5, averageSessions };
   }, [classifiedData]);
 
+  const pieData = useMemo(() => {
+    return [
+      { name: "Very High", value: metrics.counts5["Very High Availability"] || 0, color: "#10B981" },
+      { name: "High",      value: metrics.counts5["High Availability"] || 0,      color: "#3B82F6" },
+      { name: "Moderate",  value: metrics.counts5["Moderate"] || 0,               color: "#F59E0B" },
+      { name: "Low",       value: metrics.counts5["Low Availability"] || 0,       color: "#EF4444" },
+      { name: "Very Low",  value: metrics.counts5["Very Low Availability"] || 0,  color: "#7F1D1D" },
+    ].filter(item => item.value > 0);
+  }, [metrics]);
+
   return (
     <div>
       {/* Page Title & Actions Header */}
@@ -517,9 +527,8 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </button>
         </div>
       </div>
-
-      {/* Percentile Info Bar, Pie Chart, & Detailed Explanations */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, marginBottom: 24 }}>
+      {/* Row 1: Percentile Info Bar & Detailed Explanations */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 20, marginBottom: 20 }}>
         
         {/* Dynamic Percentile Value Summary */}
         <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
@@ -545,66 +554,6 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </div>
         </div>
 
-        {/* Recharts Pie Chart Category Distribution */}
-        {(() => {
-          const pieData = [
-            { name: "Very High", value: metrics.counts5["Very High Availability"] || 0, color: "#10B981" },
-            { name: "High",      value: metrics.counts5["High Availability"] || 0,      color: "#3B82F6" },
-            { name: "Moderate",  value: metrics.counts5["Moderate"] || 0,               color: "#F59E0B" },
-            { name: "Low",       value: metrics.counts5["Low Availability"] || 0,       color: "#EF4444" },
-            { name: "Very Low",  value: metrics.counts5["Very Low Availability"] || 0,  color: "#7F1D1D" },
-          ].filter(item => item.value > 0);
-
-          return (
-            <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", minHeight: 220, display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
-                📊 Diagram Lingkaran Distribusi Availability
-              </div>
-              {classifiedData.length === 0 ? (
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94A3B8", fontSize: 12 }}>
-                  Belum ada data untuk ditampilkan
-                </div>
-              ) : (
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ width: 120, height: 120 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={25}
-                          outerRadius={50}
-                          paddingAngle={3}
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => [`${value} Tutor`, "Jumlah"]} contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0" }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 600, flex: 1, marginLeft: 16 }}>
-                    {pieData.map(item => (
-                      <div key={item.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color }} />
-                          <span style={{ color: "#475569" }}>{item.name}</span>
-                        </div>
-                        <span style={{ color: "#0F172A", fontWeight: 700 }}>
-                          {item.value} ({Math.round((item.value / classifiedData.length) * 100)}%)
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
         {/* Translation and Explanation of Percentiles */}
         <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
@@ -626,6 +575,87 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </div>
         </div>
 
+      </div>
+
+      {/* Row 2: Large Visual Analytics (Pie & Bar Charts) */}
+      <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 20 }}>
+          📊 Analisis Visual Distribusi Ketersediaan Waktu Tutor
+        </div>
+        
+        {classifiedData.length === 0 ? (
+          <div style={{ padding: "40px", textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
+            Belum ada data tutor untuk divisualisasikan. Silakan unggah berkas CSV terlebih dahulu.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 24 }}>
+            {/* Left Side: Large Pie Chart & Legend */}
+            <div style={{ background: "#F8FAFC", border: "1px solid #F1F5F9", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 16, textAlign: "center" }}>
+                🟢 Persentase Distribusi Ketersediaan
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flex: 1, gap: 16, flexWrap: "wrap" }}>
+                <div style={{ width: 160, height: 160, margin: "0 auto" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value} Tutor`, "Jumlah"]} contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                
+                {/* Legend */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 11, fontWeight: 600, flex: 1, minWidth: 150 }}>
+                  {pieData.map(item => (
+                    <div key={item.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color }} />
+                        <span style={{ color: "#475569" }}>{item.name}</span>
+                      </div>
+                      <span style={{ color: "#0F172A", fontWeight: 700 }}>
+                        {item.value} ({Math.round((item.value / classifiedData.length) * 100)}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side: Bar Chart Comparison */}
+            <div style={{ background: "#F8FAFC", border: "1px solid #F1F5F9", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 16, textAlign: "center" }}>
+                📊 Perbandingan Jumlah Tutor per Kategori
+              </div>
+              <div style={{ width: "100%", height: 160 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={pieData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 600, fill: "#64748B" }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: "#64748B" }} axisLine={false} tickLine={false} />
+                    <Tooltip cursor={{ fill: "rgba(0, 0, 0, 0.02)" }} formatter={(value) => [`${value} Tutor`, "Jumlah"]} contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0" }} />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-bar-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Global Filter Toolbar */}
