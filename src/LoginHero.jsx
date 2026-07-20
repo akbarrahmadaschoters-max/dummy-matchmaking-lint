@@ -11,16 +11,14 @@ export default function LoginHero() {
     setIsLoggingIn(true);
     try {
       await signInWithPopup(auth, googleProvider);
-      // Jika berhasil, onAuthStateChanged di App.jsx akan menangkap perubahannya
-      // dan secara otomatis me-render dashboard.
     } catch (error) {
       console.error("Login failed", error);
       setIsLoggingIn(false);
       
       if (error.code === 'auth/configuration-not-found' || error.message.includes('CONFIGURATION_NOT_FOUND')) {
-        setErrorMsg("Konfigurasi Firebase tidak ditemukan. Pastikan Anda telah memasukkan config Firebase di src/firebase.js dan mengaktifkan metode Sign-in Google di console.");
+        setErrorMsg("Konfigurasi Firebase tidak ditemukan. Pastikan Anda telah memasukkan config Firebase di src/firebase.js.");
       } else if (error.message.includes('api-key-not-valid') || error.message.includes('API_KEY_INVALID')) {
-        setErrorMsg("API Key tidak valid. Sepertinya Anda masih menggunakan placeholder 'GANTI_DENGAN_API_KEY'. Silakan masukkan config asli dari Firebase Console Anda ke dalam file src/firebase.js.");
+        setErrorMsg("API Key tidak valid. Silakan masukkan config asli dari Firebase Console.");
       } else {
         setErrorMsg("Login gagal, silakan coba lagi. (" + error.message + ")");
       }
@@ -32,158 +30,349 @@ export default function LoginHero() {
       minHeight: '100vh',
       display: 'flex',
       flexDirection: 'column',
+      background: '#F8FAFC',
+      color: '#0F172A',
+      fontFamily: "'Inter', system-ui, sans-serif",
       position: 'relative',
-      background: 'radial-gradient(circle at center, #1E1B4B 0%, #0F172A 70%, #111827 100%)',
-      overflow: 'hidden',
-      fontFamily: "'Inter', system-ui, sans-serif"
+      overflowX: 'hidden'
     }}>
-      {/* Background Glowing Blobs */}
-      <div style={{
-        position: 'absolute', top: '10%', left: '20%', width: '40vw', height: '40vw',
-        background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, rgba(0,0,0,0) 70%)',
-        borderRadius: '50%', filter: 'blur(60px)', animation: 'float 10s ease-in-out infinite alternate', zIndex: 0
-      }}></div>
-      <div style={{
-        position: 'absolute', bottom: '10%', right: '20%', width: '35vw', height: '35vw',
-        background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, rgba(0,0,0,0) 70%)',
-        borderRadius: '50%', filter: 'blur(70px)', animation: 'float 12s ease-in-out infinite alternate-reverse', zIndex: 0
-      }}></div>
-
       <style>
         {`
-          @keyframes float {
-            0% { transform: translate(0px, 0px) scale(1); }
-            100% { transform: translate(40px, -40px) scale(1.1); }
+          @keyframes floatOverlay {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
           }
-          @keyframes fadeUp {
-            0% { opacity: 0; transform: translateY(30px); }
-            100% { opacity: 1; transform: translateY(0); }
+          @keyframes floatOverlayReverse {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(10px); }
+            100% { transform: translateY(0px); }
           }
           @keyframes glowPulse {
-            0% { box-shadow: 0 0 15px rgba(59,130,246,0.4); }
-            100% { box-shadow: 0 0 30px rgba(59,130,246,0.8); }
+            0% { box-shadow: 0 0 10px rgba(99,102,241,0.2); }
+            100% { box-shadow: 0 0 25px rgba(99,102,241,0.6); }
           }
-          .hero-content {
-            animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          @keyframes waveGrow {
+            0%, 100% { height: 4px; }
+            50% { height: 18px; }
           }
-          
-          /* Abstract Glass Shapes */
-          .glass-circle {
-            position: absolute;
-            top: 25%; left: 15%;
-            width: 120px; height: 120px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 8px 32px rgba(59,130,246,0.15), inset 0 0 20px rgba(99,102,241,0.2);
-            animation: float 14s ease-in-out infinite alternate;
-            z-index: 1;
+          .floating-widget-1 {
+            animation: floatOverlay 6s ease-in-out infinite;
           }
-          
-          .glass-diamond {
-            position: absolute;
-            bottom: 30%; right: 15%;
-            width: 100px; height: 100px;
-            background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1);
-            transform: rotate(45deg);
-            box-shadow: 0 8px 32px rgba(99,102,241,0.15), inset 0 0 20px rgba(59,130,246,0.2);
-            animation: float 16s ease-in-out infinite alternate-reverse;
-            z-index: 1;
+          .floating-widget-2 {
+            animation: floatOverlayReverse 7s ease-in-out infinite;
+          }
+          .pulse-button {
+            animation: glowPulse 2s infinite alternate;
+          }
+          .wave-bar {
+            width: 2px;
+            background: #6366F1;
+            border-radius: 2px;
+            display: inline-block;
           }
         `}
       </style>
 
-      {/* Decorative 3D Glass Shapes */}
-      <div className="glass-circle"></div>
-      <div className="glass-diamond"></div>
-
-      {/* Main Content */}
-      <div className="hero-content" style={{
-        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        position: 'relative', zIndex: 10, padding: '20px', textAlign: 'center'
+      {/* Navbar Header */}
+      <header style={{
+        height: 70,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 40px',
+        borderBottom: '1px solid #E2E8F0',
+        background: '#FFFFFF',
+        zIndex: 50
       }}>
         {/* Logo */}
-        <div style={{
-          width: 72, height: 72, background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
-          borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          marginBottom: 32, boxShadow: '0 0 25px rgba(59,130,246,0.5), inset 0 2px 4px rgba(255,255,255,0.3)',
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          <span style={{ color: '#FFF', fontSize: 36, fontWeight: 800 }}>L</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32,
+            background: 'linear-gradient(135deg, #6366F1, #818CF8)',
+            borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <span style={{ color: '#FFF', fontSize: 16, fontWeight: 800 }}>L</span>
+          </div>
+          <span style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.03em' }}>LINT</span>
         </div>
 
-        {/* Title */}
-        <h1 style={{
-          margin: '0 0 16px 0', fontSize: 'clamp(32px, 5vw, 56px)', fontWeight: 800, color: '#FFFFFF',
-          letterSpacing: '-0.02em', lineHeight: 1.1, maxWidth: 800
-        }}>
-          Revamp Matchmaking <span style={{ background: 'linear-gradient(to right, #60A5FA, #3B82F6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', textShadow: '0 0 20px rgba(59,130,246,0.3)' }}>LINT</span> Apps
-        </h1>
+        {/* Links */}
+        <nav style={{ display: 'flex', gap: 28 }}>
+          {['Home', 'Pricing', 'FAQ', 'Contact'].map(link => (
+            <span key={link} style={{ fontSize: 14, fontWeight: 600, color: '#64748B', cursor: 'pointer', transition: 'color 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#4F46E5'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#64748B'}>
+              {link}
+            </span>
+          ))}
+        </nav>
 
-        {/* Subtitle */}
-        <p style={{ margin: '0 0 48px 0', fontSize: 'clamp(16px, 2vw, 20px)', color: '#94A3B8', fontWeight: 500 }}>
-          Developed by Akbar
-        </p>
+        {/* Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <span onClick={handleLogin} style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', cursor: 'pointer' }}>Log in</span>
+          <button onClick={handleLogin} style={{
+            background: '#6366F1', color: '#FFF', border: 'none', borderRadius: 10,
+            padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = '#4F46E5'}
+          onMouseLeave={e => e.currentTarget.style.background = '#6366F1'}>
+            Get Started
+          </button>
+        </div>
+      </header>
 
-        {/* Error Message */}
-        {errorMsg && (
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: '#FCA5A5', padding: '12px 20px', borderRadius: '12px',
-            marginBottom: '24px', maxWidth: '500px', fontSize: '14px', lineHeight: 1.5,
-            backdropFilter: 'blur(8px)'
-          }}>
-            {errorMsg}
-          </div>
-        )}
-
-        {/* CTA Button */}
-        <button onClick={handleLogin} disabled={isLoggingIn} style={{
-          background: 'linear-gradient(to right, #3B82F6, #6366F1)', color: '#FFFFFF',
-          border: '1px solid rgba(255,255,255,0.1)', padding: '16px 40px', borderRadius: 12, fontSize: 16, fontWeight: 700,
-          cursor: isLoggingIn ? 'not-allowed' : 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          boxShadow: '0 0 15px rgba(59,130,246,0.5)',
-          display: 'flex', alignItems: 'center', gap: 12, opacity: isLoggingIn ? 0.8 : 1
-        }}
-        onMouseEnter={e => {
-          if(!isLoggingIn) {
-            e.currentTarget.style.transform = 'translateY(-3px)';
-            e.currentTarget.style.boxShadow = '0 0 30px rgba(59,130,246,0.8), inset 0 2px 4px rgba(255,255,255,0.2)';
-          }
-        }}
-        onMouseLeave={e => {
-          if(!isLoggingIn) {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 0 15px rgba(59,130,246,0.5)';
-          }
-        }}
-        >
-          {/* Google G Icon */}
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-          </svg>
-          {isLoggingIn ? 'Memproses...' : 'Masuk dengan Google'}
-        </button>
-
-        {/* Small contact text */}
-        <p style={{ margin: '32px 0 0 0', fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>
-          If any case, please contact Akbar
-        </p>
-      </div>
-
-      {/* Footer */}
-      <div style={{
-        padding: '24px', textAlign: 'center', position: 'relative', zIndex: 10,
-        fontSize: 12, color: '#64748B', fontWeight: 500
+      {/* Main Hero Container */}
+      <main style={{
+        flex: 1,
+        maxWidth: 1200,
+        margin: '0 auto',
+        padding: '60px 40px',
+        display: 'grid',
+        gridTemplateColumns: '1.1fr 0.9fr',
+        gap: 60,
+        alignItems: 'center',
+        zIndex: 10
       }}>
-        © 2026 LINT · Tim Ops
-      </div>
+        {/* Left Side: Copywriting */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          
+          {/* Akbar Badge Tag */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            border: '1.5px solid #EEF2FF', background: '#EEF2FF',
+            borderRadius: 20, padding: '4px 14px', marginBottom: 24
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 800, background: '#6366F1', color: '#FFF', borderRadius: 99, padding: '2px 6px' }}>MEET</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#6366F1' }}>🚀 Developed by Akbar</span>
+          </div>
+
+          {/* Heading */}
+          <h1 style={{
+            fontSize: 'clamp(36px, 4.5vw, 54px)',
+            fontWeight: 800,
+            color: '#0F172A',
+            lineHeight: 1.1,
+            letterSpacing: '-0.02em',
+            margin: '0 0 20px 0'
+          }}>
+            LINT Teacher<br />
+            Monitoring APPS
+          </h1>
+
+          {/* Subtext */}
+          <p style={{
+            fontSize: 16,
+            color: '#475569',
+            lineHeight: 1.6,
+            margin: '0 0 32px 0',
+            maxWidth: 480
+          }}>
+            All-in-one meeting dashboard with video calls, notes, voice assistant, and team messaging—designed to keep everyone on the same page.
+          </p>
+
+          {/* Auth Error Message */}
+          {errorMsg && (
+            <div style={{
+              background: '#FEF2F2', border: '1px solid #FECACA',
+              color: '#B91C1C', padding: '12px 18px', borderRadius: '12px',
+              marginBottom: '24px', maxWidth: '480px', fontSize: '13px', lineHeight: 1.5
+            }}>
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: 14, marginBottom: 40, width: '100%' }}>
+            <button onClick={handleLogin} disabled={isLoggingIn} className="pulse-button" style={{
+              background: '#6366F1', color: '#FFF', border: 'none', borderRadius: 12,
+              padding: '15px 32px', fontSize: 15, fontWeight: 700, cursor: isLoggingIn ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s',
+              boxShadow: '0 4px 14px rgba(99,102,241,0.35)'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+              {/* Google G Icon */}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#FFF"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#FFF"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FFF"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#FFF"/>
+              </svg>
+              {isLoggingIn ? 'Memproses...' : 'Get Started Today'}
+            </button>
+            
+            <button onClick={handleLogin} style={{
+              background: '#FFF', color: '#475569', border: '1.5px solid #E2E8F0', borderRadius: 12,
+              padding: '15px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
+            onMouseLeave={e => e.currentTarget.style.background = '#FFF'}>
+              Learn More
+            </button>
+          </div>
+
+          {/* Social Proof Avatars */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ display: 'flex', marginLeft: 4 }}>
+              {['A', 'B', 'M', 'T'].map((char, idx) => (
+                <div key={idx} style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'][idx],
+                  border: '2px solid #FFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#FFF', fontSize: 11, fontWeight: 800, marginLeft: idx === 0 ? 0 : -8,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}>
+                  {char}
+                </div>
+              ))}
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>
+              <strong style={{ color: '#0F172A' }}>81 K+</strong> Users every week
+            </span>
+          </div>
+
+        </div>
+
+        {/* Right Side: Visual Mockup (Matching reference design) */}
+        <div style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
+          
+          {/* Main Container Wrapper */}
+          <div style={{
+            width: '100%',
+            maxWidth: 420,
+            aspectRatio: '0.85/1',
+            background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+            borderRadius: 24,
+            padding: 20,
+            position: 'relative',
+            boxShadow: '0 20px 40px rgba(99,102,241,0.1)',
+            boxSizing: 'border-box'
+          }}>
+            {/* Main Video Frame */}
+            <div style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 20,
+              overflow: 'hidden',
+              position: 'relative',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+              background: '#FFFFFF'
+            }}>
+              <img src="/friendly_tutor_face.png" alt="Friendly Tutor" style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }} />
+
+              {/* Host Tag */}
+              <div style={{
+                position: 'absolute', top: 12, left: 12,
+                background: '#6366F1', color: '#FFF', fontSize: 10, fontWeight: 700,
+                padding: '3px 8px', borderRadius: 6, textTransform: 'uppercase'
+              }}>
+                Host
+              </div>
+
+              {/* Top Right Mic Animation Widget */}
+              <div className="floating-widget-1" style={{
+                position: 'absolute', top: 12, right: 12,
+                background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(8px)',
+                borderRadius: 12, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 18, width: 22, justifyContent: 'center' }}>
+                  <div className="wave-bar" style={{ animation: 'waveGrow 1.2s infinite ease-in-out' }} />
+                  <div className="wave-bar" style={{ animation: 'waveGrow 0.8s infinite ease-in-out 0.2s' }} />
+                  <div className="wave-bar" style={{ animation: 'waveGrow 1.5s infinite ease-in-out 0.4s' }} />
+                  <div className="wave-bar" style={{ animation: 'waveGrow 1s infinite ease-in-out 0.1s' }} />
+                </div>
+              </div>
+
+              {/* Timer Badge */}
+              <div style={{
+                position: 'absolute', top: 56, right: 12,
+                background: 'rgba(15,23,42,0.8)', color: '#FFF', fontSize: 10, fontWeight: 700,
+                padding: '4px 9px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />
+                00:58:29
+              </div>
+
+              {/* Chat Bubble Message Overlay Widget */}
+              <div className="floating-widget-2" style={{
+                position: 'absolute', bottom: 70, left: 16, right: 16,
+                background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)',
+                border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: 16,
+                padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
+                boxShadow: '0 10px 25px rgba(0,0,0,0.08)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#FFF', fontWeight: 800 }}>
+                    Y
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: '#0F172A' }}>You</span>
+                  <span style={{ fontSize: 9, color: '#94A3B8' }}>2m ago</span>
+                </div>
+                <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.4 }}>
+                  Good question. We'll discuss the timeline today and decide on the first few milestones together.
+                </div>
+              </div>
+
+              {/* Floating Participant Box */}
+              <div className="floating-widget-1" style={{
+                position: 'absolute', bottom: 12, right: 12, width: 85, aspectRatio: '1/1',
+                borderRadius: 12, overflow: 'hidden', border: '2px solid #FFF',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)', background: '#EEF2FF'
+              }}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #818CF8, #6366F1)' }}>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: '#FFF' }}>T</span>
+                </div>
+              </div>
+
+              {/* Bottom Control Actions Mockup */}
+              <div style={{
+                position: 'absolute', bottom: 12, left: 12,
+                background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(8px)',
+                borderRadius: 10, padding: '6px 10px', display: 'flex', gap: 6,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}>
+                <div style={{ width: 16, height: 16, borderRadius: 4, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>📹</div>
+                <div style={{ width: 16, height: 16, borderRadius: 4, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>🎙️</div>
+                <div style={{ width: 16, height: 16, borderRadius: 4, background: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>💬</div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+      {/* Footer Branding Logos */}
+      <footer style={{
+        borderTop: '1px solid #E2E8F0',
+        padding: '30px 40px',
+        background: '#FFFFFF',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 60,
+        flexWrap: 'wrap',
+        zIndex: 10
+      }}>
+        {['Notion', 'HubSpot', 'Udemy', 'Slack', 'Mailchimp'].map(brand => (
+          <span key={brand} style={{
+            fontSize: 14,
+            fontWeight: 800,
+            color: '#94A3B8',
+            letterSpacing: '0.05em',
+            textTransform: 'lowercase',
+            opacity: 0.75
+          }}>
+            {brand === 'Mailchimp' ? '🐒 mailchimp' : brand}
+          </span>
+        ))}
+      </footer>
     </div>
   );
 }
