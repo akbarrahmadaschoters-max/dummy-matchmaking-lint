@@ -743,7 +743,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
                   <td style={{ padding: "14px 16px" }}>
                     <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 600 }}>{t.program}</span>
                   </td>
-                  <td style={{ padding: "14px 16px", fontSize: 12, fontWeight: 600, color: t.availability === "High" ? "#15803D" : t.availability === "Medium" ? "#1D4ED8" : t.availability === "Moderate" ? "#B45309" : "#B91C1C" }}>
+                  <td style={{ padding: "14px 16px", fontSize: 12, fontWeight: 600, color: t.availability === "Very High" ? "#10B981" : t.availability === "High" ? "#3B82F6" : t.availability === "Moderate" ? "#F59E0B" : t.availability === "Low" ? "#EF4444" : t.availability === "Very Low" ? "#7F1D1D" : "#64748B" }}>
                     {t.availability || "—"}
                   </td>
                   <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.qc} color="#6366F1" /></td>
