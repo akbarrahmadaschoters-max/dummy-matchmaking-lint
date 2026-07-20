@@ -9,11 +9,13 @@ import OnboardingPage from "./OnboardingPage.jsx";
 import DisqualifiedPage from "./DisqualifiedPage.jsx";
 import OfflinePage from "./OfflinePage.jsx";
 import MasterDataPage from "./MasterDataPage.jsx";
+import MasterDataIntertestPage from "./MasterDataIntertestPage.jsx";
 import LoginHero from "./LoginHero.jsx";
 
 export default function App() {
   const [teachers, setTeachers] = useState([]);
   const [masterTeachers, setMasterTeachers] = useState([]);
+  const [masterIntertestTeachers, setMasterIntertestTeachers] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -40,13 +42,21 @@ export default function App() {
           setMasterTeachers(masterData);
         });
 
+        // Listen to master_intertest_teachers collection
+        const unsubscribeMasterIntertestDb = onSnapshot(collection(db, "master_intertest_teachers"), (snapshot) => {
+          const masterIntertestData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setMasterIntertestTeachers(masterIntertestData);
+        });
+
         return () => {
           unsubscribeDb();
           unsubscribeMasterDb();
+          unsubscribeMasterIntertestDb();
         };
       } else {
         setTeachers([]);
         setMasterTeachers([]);
+        setMasterIntertestTeachers([]);
       }
     });
 
@@ -59,6 +69,7 @@ export default function App() {
         setUser(null);
         setTeachers([]);
         setMasterTeachers([]);
+        setMasterIntertestTeachers([]);
         return;
       }
       await signOut(auth);
@@ -70,7 +81,7 @@ export default function App() {
   console.log("Verify Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
   const tabStyle = (active) => ({
-    padding: "8px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+    padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600,
     cursor: "pointer", border: "none", transition: "all 0.15s",
     background: active ? "#EEF2FF" : "transparent",
     color: active ? "#4F46E5" : "#64748B",
@@ -100,7 +111,8 @@ export default function App() {
             </div>
             <div style={{ display: "flex", gap: 4, background: "#F8FAFC", padding: 4, borderRadius: 11 }}>
               <button style={tabStyle(page === "dashboard")} onClick={() => setPage("dashboard")}>Dashboard</button>
-              <button style={tabStyle(page === "master_data")} onClick={() => setPage("master_data")}>Master Data Lingua</button>
+              <button style={tabStyle(page === "master_data")} onClick={() => setPage("master_data")}>Master Lingua</button>
+              <button style={tabStyle(page === "master_intertest")} onClick={() => setPage("master_intertest")}>Master Intertest</button>
               <button style={tabStyle(page === "comparison")} onClick={() => setPage("comparison")}>Comparison</button>
               <button style={tabStyle(page === "offline")} onClick={() => setPage("offline")}>Offline & Hybrid</button>
               <button style={tabStyle(page === "onboarding")} onClick={() => setPage("onboarding")}>Onboarding Pool</button>
@@ -120,6 +132,7 @@ export default function App() {
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 32px" }}>
         {page === "dashboard" && <DashboardPage teachers={teachers} setTeachers={setTeachers} />}
         {page === "master_data" && <MasterDataPage masterTeachers={masterTeachers} setMasterTeachers={setMasterTeachers} />}
+        {page === "master_intertest" && <MasterDataIntertestPage masterIntertestTeachers={masterIntertestTeachers} setMasterIntertestTeachers={setMasterIntertestTeachers} />}
         {page === "comparison" && <ComparisonPage teachers={teachers} />}
         {page === "offline" && <OfflinePage teachers={teachers} setTeachers={setTeachers} />}
         {page === "onboarding" && <OnboardingPage teachers={teachers} setTeachers={setTeachers} />}
