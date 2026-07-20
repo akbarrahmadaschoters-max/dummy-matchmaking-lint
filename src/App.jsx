@@ -8,10 +8,12 @@ import ComparisonPage from "./ComparisonPage.jsx";
 import OnboardingPage from "./OnboardingPage.jsx";
 import DisqualifiedPage from "./DisqualifiedPage.jsx";
 import OfflinePage from "./OfflinePage.jsx";
+import MasterDataPage from "./MasterDataPage.jsx";
 import LoginHero from "./LoginHero.jsx";
 
 export default function App() {
   const [teachers, setTeachers] = useState([]);
+  const [masterTeachers, setMasterTeachers] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -25,16 +27,26 @@ export default function App() {
         // Start listening to Firestore when logged in
         const unsubscribeDb = onSnapshot(collection(db, "teachers"), (snapshot) => {
           const teachersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          // Fallback to INITIAL_TEACHERS if DB is empty for demo purposes (optional)
           if (teachersData.length === 0) {
             setTeachers(INITIAL_TEACHERS);
           } else {
             setTeachers(teachersData);
           }
         });
-        return () => unsubscribeDb();
+
+        // Listen to master_teachers collection
+        const unsubscribeMasterDb = onSnapshot(collection(db, "master_teachers"), (snapshot) => {
+          const masterData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setMasterTeachers(masterData);
+        });
+
+        return () => {
+          unsubscribeDb();
+          unsubscribeMasterDb();
+        };
       } else {
         setTeachers([]);
+        setMasterTeachers([]);
       }
     });
 
@@ -46,6 +58,7 @@ export default function App() {
       if (user?.uid === 'dummy-user-123') {
         setUser(null);
         setTeachers([]);
+        setMasterTeachers([]);
         return;
       }
       await signOut(auth);
@@ -87,6 +100,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", gap: 4, background: "#F8FAFC", padding: 4, borderRadius: 11 }}>
               <button style={tabStyle(page === "dashboard")} onClick={() => setPage("dashboard")}>Dashboard</button>
+              <button style={tabStyle(page === "master_data")} onClick={() => setPage("master_data")}>Master Data Lingua</button>
               <button style={tabStyle(page === "comparison")} onClick={() => setPage("comparison")}>Comparison</button>
               <button style={tabStyle(page === "offline")} onClick={() => setPage("offline")}>Offline & Hybrid</button>
               <button style={tabStyle(page === "onboarding")} onClick={() => setPage("onboarding")}>Onboarding Pool</button>
@@ -105,6 +119,7 @@ export default function App() {
 
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 32px" }}>
         {page === "dashboard" && <DashboardPage teachers={teachers} setTeachers={setTeachers} />}
+        {page === "master_data" && <MasterDataPage masterTeachers={masterTeachers} setMasterTeachers={setMasterTeachers} />}
         {page === "comparison" && <ComparisonPage teachers={teachers} />}
         {page === "offline" && <OfflinePage teachers={teachers} setTeachers={setTeachers} />}
         {page === "onboarding" && <OnboardingPage teachers={teachers} setTeachers={setTeachers} />}
