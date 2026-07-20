@@ -74,12 +74,11 @@ export default function LoginHero() {
         `}
       </style>
 
-      {/* Navbar Header */}
+      {/* Navbar Header (Simplified) */}
       <header style={{
         height: 70,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
         padding: '0 40px',
         borderBottom: '1px solid #E2E8F0',
         background: '#FFFFFF',
@@ -96,30 +95,6 @@ export default function LoginHero() {
           </div>
           <span style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.03em' }}>LINT</span>
         </div>
-
-        {/* Links */}
-        <nav style={{ display: 'flex', gap: 28 }}>
-          {['Home', 'Pricing', 'FAQ', 'Contact'].map(link => (
-            <span key={link} style={{ fontSize: 14, fontWeight: 600, color: '#64748B', cursor: 'pointer', transition: 'color 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#4F46E5'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#64748B'}>
-              {link}
-            </span>
-          ))}
-        </nav>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <span onClick={handleLogin} style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', cursor: 'pointer' }}>Log in</span>
-          <button onClick={handleLogin} style={{
-            background: '#6366F1', color: '#FFF', border: 'none', borderRadius: 10,
-            padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = '#4F46E5'}
-          onMouseLeave={e => e.currentTarget.style.background = '#6366F1'}>
-            Get Started
-          </button>
-        </div>
       </header>
 
       {/* Main Hero Container */}
@@ -127,9 +102,9 @@ export default function LoginHero() {
         flex: 1,
         maxWidth: 1200,
         margin: '0 auto',
-        padding: '60px 40px',
+        padding: '80px 40px',
         display: 'grid',
-        gridTemplateColumns: '1.1fr 0.9fr',
+        gridTemplateColumns: '1fr 1fr',
         gap: 60,
         alignItems: 'center',
         zIndex: 10
@@ -137,16 +112,6 @@ export default function LoginHero() {
         {/* Left Side: Copywriting */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
           
-          {/* Akbar Badge Tag */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            border: '1.5px solid #EEF2FF', background: '#EEF2FF',
-            borderRadius: 20, padding: '4px 14px', marginBottom: 24
-          }}>
-            <span style={{ fontSize: 10, fontWeight: 800, background: '#6366F1', color: '#FFF', borderRadius: 99, padding: '2px 6px' }}>MEET</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#6366F1' }}>🚀 Developed by Akbar</span>
-          </div>
-
           {/* Heading */}
           <h1 style={{
             fontSize: 'clamp(36px, 4.5vw, 54px)',
@@ -154,7 +119,7 @@ export default function LoginHero() {
             color: '#0F172A',
             lineHeight: 1.1,
             letterSpacing: '-0.02em',
-            margin: '0 0 20px 0'
+            margin: '0 0 16px 0'
           }}>
             LINT Teacher<br />
             Monitoring APPS
@@ -163,12 +128,11 @@ export default function LoginHero() {
           {/* Subtext */}
           <p style={{
             fontSize: 16,
-            color: '#475569',
-            lineHeight: 1.6,
-            margin: '0 0 32px 0',
-            maxWidth: 480
+            fontWeight: 600,
+            color: '#6366F1',
+            margin: '0 0 36px 0'
           }}>
-            All-in-one meeting dashboard with video calls, notes, voice assistant, and team messaging—designed to keep everyone on the same page.
+            Developed by Akbar Rahmada
           </p>
 
           {/* Auth Error Message */}
@@ -183,10 +147,10 @@ export default function LoginHero() {
           )}
 
           {/* Buttons */}
-          <div style={{ display: 'flex', gap: 14, marginBottom: 40, width: '100%' }}>
+          <div style={{ display: 'flex', gap: 14, width: '100%' }}>
             <button onClick={handleLogin} disabled={isLoggingIn} className="pulse-button" style={{
               background: '#6366F1', color: '#FFF', border: 'none', borderRadius: 12,
-              padding: '15px 32px', fontSize: 15, fontWeight: 700, cursor: isLoggingIn ? 'not-allowed' : 'pointer',
+              padding: '16px 36px', fontSize: 15, fontWeight: 700, cursor: isLoggingIn ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s',
               boxShadow: '0 4px 14px rgba(99,102,241,0.35)'
             }}
@@ -199,37 +163,8 @@ export default function LoginHero() {
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FFF"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#FFF"/>
               </svg>
-              {isLoggingIn ? 'Memproses...' : 'Get Started Today'}
+              {isLoggingIn ? 'Memproses...' : 'Masuk dengan Google'}
             </button>
-            
-            <button onClick={handleLogin} style={{
-              background: '#FFF', color: '#475569', border: '1.5px solid #E2E8F0', borderRadius: 12,
-              padding: '15px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
-            onMouseLeave={e => e.currentTarget.style.background = '#FFF'}>
-              Learn More
-            </button>
-          </div>
-
-          {/* Social Proof Avatars */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ display: 'flex', marginLeft: 4 }}>
-              {['A', 'B', 'M', 'T'].map((char, idx) => (
-                <div key={idx} style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'][idx],
-                  border: '2px solid #FFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#FFF', fontSize: 11, fontWeight: 800, marginLeft: idx === 0 ? 0 : -8,
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                }}>
-                  {char}
-                </div>
-              ))}
-            </div>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>
-              <strong style={{ color: '#0F172A' }}>81 K+</strong> Users every week
-            </span>
           </div>
 
         </div>
@@ -347,32 +282,6 @@ export default function LoginHero() {
 
         </div>
       </main>
-
-      {/* Footer Branding Logos */}
-      <footer style={{
-        borderTop: '1px solid #E2E8F0',
-        padding: '30px 40px',
-        background: '#FFFFFF',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 60,
-        flexWrap: 'wrap',
-        zIndex: 10
-      }}>
-        {['Notion', 'HubSpot', 'Udemy', 'Slack', 'Mailchimp'].map(brand => (
-          <span key={brand} style={{
-            fontSize: 14,
-            fontWeight: 800,
-            color: '#94A3B8',
-            letterSpacing: '0.05em',
-            textTransform: 'lowercase',
-            opacity: 0.75
-          }}>
-            {brand === 'Mailchimp' ? '🐒 mailchimp' : brand}
-          </span>
-        ))}
-      </footer>
     </div>
   );
 }
