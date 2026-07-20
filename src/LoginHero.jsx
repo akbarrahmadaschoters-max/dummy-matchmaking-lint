@@ -30,14 +30,15 @@ export default function LoginHero() {
       minHeight: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      background: 'linear-gradient(135deg, #4f46e5 0%, #a855f7 50%, #ec4899 100%)',
+      background: '#FFFFFF',
       backgroundImage: `
-        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.15) 0%, transparent 60%),
-        linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)
+        radial-gradient(circle at 10% 20%, rgba(139,92,246,0.08) 0%, transparent 45%),
+        radial-gradient(circle at 90% 80%, rgba(253,224,71,0.12) 0%, transparent 50%),
+        linear-gradient(to right, rgba(139,92,246,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(139,92,246,0.03) 1px, transparent 1px)
       `,
-      backgroundSize: '100% 100%, 100px 100px, 100px 100px',
-      color: '#FFFFFF',
+      backgroundSize: '100% 100%, 100% 100%, 80px 80px, 80px 80px',
+      color: '#0F172A',
       fontFamily: "'Inter', system-ui, sans-serif",
       position: 'relative',
       overflowX: 'hidden'
@@ -46,17 +47,17 @@ export default function LoginHero() {
         {`
           @keyframes floatOverlay {
             0% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-10px) rotate(2deg); }
+            50% { transform: translateY(-8px) rotate(1.5deg); }
             100% { transform: translateY(0px) rotate(0deg); }
           }
           @keyframes floatOverlayReverse {
             0% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(10px) rotate(-2deg); }
+            50% { transform: translateY(8px) rotate(-1.5deg); }
             100% { transform: translateY(0px) rotate(0deg); }
           }
           @keyframes glowPulse {
-            0% { box-shadow: 0 0 10px rgba(255,255,255,0.2); }
-            100% { box-shadow: 0 0 25px rgba(255,255,255,0.6); }
+            0% { box-shadow: 0 0 10px rgba(99,102,241,0.25); }
+            100% { box-shadow: 0 0 25px rgba(99,102,241,0.55); }
           }
           @keyframes waveGrow {
             0%, 100% { height: 4px; }
@@ -69,7 +70,7 @@ export default function LoginHero() {
             animation: floatOverlayReverse 7s ease-in-out infinite;
           }
           .pulse-button {
-            animation: glowPulse 2s infinite alternate;
+            animation: glowPulse 2.0s infinite alternate;
           }
           .wave-bar {
             width: 2px;
@@ -80,12 +81,11 @@ export default function LoginHero() {
         `}
       </style>
 
-      {/* Navbar Header (Glassmorphic & Integrated) */}
+      {/* Navbar Header (Simplified, clean) */}
       <header style={{
         height: 70,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
         padding: '0 40px',
         background: 'transparent',
         zIndex: 50
@@ -94,105 +94,93 @@ export default function LoginHero() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 32, height: 32,
-            background: '#FFFFFF',
+            background: 'linear-gradient(135deg, #6366F1, #818CF8)',
             borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
-            <span style={{ color: '#4F46E5', fontSize: 16, fontWeight: 800 }}>L</span>
+            <span style={{ color: '#FFF', fontSize: 16, fontWeight: 800 }}>L</span>
           </div>
-          <span style={{ fontSize: 18, fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.03em' }}>LINT</span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.03em' }}>LINT</span>
         </div>
-
-        {/* Top-Right "Mulai Belajar" Button (Triggers Gmail Sign In) */}
-        <button onClick={handleLogin} style={{
-          background: '#FFFFFF', color: '#0F172A', border: 'none', borderRadius: 20,
-          padding: '9px 22px', fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s',
-          textTransform: 'uppercase', letterSpacing: '0.05em', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-        }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
-          Mulai Belajar
-        </button>
       </header>
 
-      {/* Decorative Semicircles from reference image */}
+      {/* Semicircles (Playful yellow & purple shapes from reference) */}
       <div style={{
-        position: 'absolute', top: 0, left: '45%', width: 120, height: 40,
-        background: '#FCA5A5', opacity: 0.6, borderBottomLeftRadius: 60, borderBottomRightRadius: 60, zIndex: 0
+        position: 'absolute', top: 0, left: '20%', width: 140, height: 45,
+        background: 'rgba(253, 224, 71, 0.4)', borderBottomLeftRadius: 70, borderBottomRightRadius: 70, zIndex: 0
       }} />
       <div style={{
-        position: 'absolute', bottom: 0, left: '55%', width: 180, height: 90,
-        background: '#FDE047', opacity: 0.8, borderTopLeftRadius: 90, borderTopRightRadius: 90, zIndex: 0
+        position: 'absolute', bottom: 0, right: '25%', width: 180, height: 60,
+        background: 'rgba(167, 139, 250, 0.25)', borderTopLeftRadius: 90, borderTopRightRadius: 90, zIndex: 0
       }} />
 
-      {/* Floating Yellow Arrow Pointer Element from reference */}
+      {/* Yellow Arrow Accent - Rotated and placed playfully */}
       <div className="floating-widget-1" style={{
-        position: 'absolute', top: '15%', right: '48%', fontSize: 96, fontWeight: 900, color: '#FDE047',
-        transform: 'rotate(0deg)', opacity: 0.9, textShadow: '0 8px 30px rgba(253,224,71,0.5)', zIndex: 2
+        position: 'absolute', top: '16%', right: '36%', fontSize: 84, fontWeight: 900, color: '#FCD34D',
+        transform: 'rotate(-15deg)', opacity: 0.9, textShadow: '0 6px 18px rgba(252,211,77,0.4)', zIndex: 1
       }}>
         ↗
       </div>
 
-      {/* Floating Purple Checkmark Element from reference */}
+      {/* Thick Gradient Checkmark Accent - Placed playfully behind the card */}
       <div className="floating-widget-2" style={{
-        position: 'absolute', bottom: '15%', left: '38%', zIndex: 2,
-        filter: 'drop-shadow(0 15px 30px rgba(0,0,0,0.3))'
+        position: 'absolute', bottom: '12%', left: '42%', zIndex: 1,
+        filter: 'drop-shadow(0 12px 24px rgba(99,102,241,0.15))'
       }}>
-        <svg width="140" height="140" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <linearGradient id="checkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#F472B6" />
-              <stop offset="100%" stopColor="#C084FC" />
+              <stop offset="0%" stopColor="#C084FC" />
+              <stop offset="100%" stopColor="#F472B6" />
             </linearGradient>
           </defs>
-          <path d="M22 52 L42 72 L82 32" stroke="url(#checkGrad)" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M22 52 L42 72 L82 32" stroke="url(#checkGrad)" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
 
       {/* Main Hero Container */}
       <main style={{
         flex: 1,
-        maxWidth: 1200,
+        maxWidth: 1100,
         margin: '0 auto',
         padding: '60px 40px',
         display: 'grid',
-        gridTemplateColumns: '1.1fr 0.9fr',
-        gap: 60,
+        gridTemplateColumns: '1.05fr 0.95fr',
+        gap: 50,
         alignItems: 'center',
         zIndex: 10
       }}>
         {/* Left Side: Copywriting */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', zIndex: 10 }}>
           
-          {/* Heading */}
+          {/* Heading - Clean dark navy text for absolute clarity */}
           <h1 style={{
-            fontSize: 'clamp(36px, 4.5vw, 54px)',
+            fontSize: 'clamp(36px, 4.5vw, 50px)',
             fontWeight: 800,
-            color: '#FFFFFF',
-            lineHeight: 1.1,
+            color: '#1E293B',
+            lineHeight: 1.15,
             letterSpacing: '-0.02em',
-            margin: '0 0 24px 0',
-            textShadow: '0 4px 16px rgba(15,23,42,0.3)'
+            margin: '0 0 20px 0'
           }}>
             LINT Teacher<br />
             Monitoring APPS
           </h1>
 
           {/* Buttons */}
-          <div style={{ display: 'flex', gap: 14, width: '100%', marginBottom: 32 }}>
+          <div style={{ display: 'flex', gap: 14, width: '100%', marginBottom: 36 }}>
             <button onClick={handleLogin} disabled={isLoggingIn} className="pulse-button" style={{
-              background: '#FFFFFF', color: '#4F46E5', border: 'none', borderRadius: 12,
+              background: '#6366F1', color: '#FFFFFF', border: 'none', borderRadius: 12,
               padding: '16px 36px', fontSize: 15, fontWeight: 800, cursor: isLoggingIn ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.15)'
+              boxShadow: '0 8px 25px rgba(99,102,241,0.25)'
             }}
             onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
             onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
               {/* Google G Icon */}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4F46E5"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#4F46E5"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#4F46E5"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#4F46E5"/>
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#FFFFFF"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#FFFFFF"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FFFFFF"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#FFFFFF"/>
               </svg>
               {isLoggingIn ? 'Memproses...' : 'Masuk dengan Google'}
             </button>
@@ -201,26 +189,25 @@ export default function LoginHero() {
           {/* Auth Error Message */}
           {errorMsg && (
             <div style={{
-              background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.3)',
-              color: '#FFF5F5', padding: '12px 18px', borderRadius: '12px',
+              background: '#FEF2F2', border: '1px solid #FECACA',
+              color: '#B91C1C', padding: '12px 18px', borderRadius: '12px',
               marginBottom: '24px', maxWidth: '480px', fontSize: '13px', lineHeight: 1.5
             }}>
               {errorMsg}
             </div>
           )}
 
-          {/* Developer Badge Pill styled exactly like reference image */}
+          {/* Developer Card (Clean glassmorphic dark grey) */}
           <div style={{
-            background: 'rgba(15, 23, 42, 0.45)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: 'rgba(15, 23, 42, 0.05)',
+            border: '1.5px solid rgba(15, 23, 42, 0.08)',
             borderRadius: 20,
             padding: '16px 24px',
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.25)',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.02)',
             display: 'inline-block'
           }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#FFFFFF' }}>by Akbar Rahmada Maulana</div>
-            <div style={{ fontSize: 11, color: '#E2E8F0', marginTop: 4, fontWeight: 500, letterSpacing: '0.05em' }}>LINT Bishops</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#1E293B' }}>by Akbar Rahmada Maulana</div>
+            <div style={{ fontSize: 11, color: '#64748B', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em' }}>LINT Bishops</div>
           </div>
 
         </div>
@@ -231,15 +218,14 @@ export default function LoginHero() {
           {/* Main Container Wrapper */}
           <div style={{
             width: '100%',
-            maxWidth: 400,
+            maxWidth: 390,
             aspectRatio: '0.85/1',
-            background: 'rgba(255, 255, 255, 0.15)',
-            backdropFilter: 'blur(12px)',
-            border: '1.5px solid rgba(255, 255, 255, 0.2)',
+            background: '#F5F3FF',
+            border: '1.5px solid #E9D5FF',
             borderRadius: 24,
             padding: 16,
             position: 'relative',
-            boxShadow: '0 20px 45px rgba(0,0,0,0.15)',
+            boxShadow: '0 20px 45px rgba(139,92,246,0.1)',
             boxSizing: 'border-box'
           }}>
             {/* Main Video Frame */}
