@@ -311,13 +311,20 @@ export default function OfflinePage({ teachers, setTeachers }) {
     return Object.values(groups);
   }, [offlineTeachers]);
 
-  const scored = useMemo(() =>
-    offlineTeachers.map(t => {
+  const scored = useMemo(() => {
+    const list = offlineTeachers.map(t => {
       const score = calcScore(t);
       return { ...t, score, status: getStatus(score, t) };
-    }).sort((a, b) => b.score.final - a.score.final),
-    [offlineTeachers]
-  );
+    }).sort((a, b) => b.score.final - a.score.final);
+
+    let rankCounter = 1;
+    return list.map(t => {
+      if (t.identifier !== "Baru" && !t.isDisqualified) {
+        return { ...t, rank: rankCounter++ };
+      }
+      return { ...t, rank: "—" };
+    });
+  }, [offlineTeachers]);
 
   const filtered = useMemo(() => scored.filter(t => {
     if (selectedCity !== "All" && t.kota !== selectedCity) return false;
@@ -632,7 +639,7 @@ export default function OfflinePage({ teachers, setTeachers }) {
               <tr key={t.id} id={`row-${t.id}`} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.2s" }}
                 onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>#{i + 1}</td>
+                <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>{t.rank === "—" ? "—" : `#${t.rank}`}</td>
                 <td style={{ padding: "14px 16px" }}>
                   <div style={{ fontWeight: 600, color: "#0F172A" }}>{t.name}</div>
                   {(t.gantiTutor === 1 || t.gantiTutor === 2) && (
