@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Papa from "papaparse";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Sector } from "recharts";
 import { INITIAL_TEACHERS, calcScore, getStatus, STATUS_CONFIG, scoreColor } from "./scoring.js";
 import { StatusBadge, ScoreBar } from "./components.jsx";
 import { useGoogleLogin } from "@react-oauth/google";
@@ -8,6 +8,25 @@ import { db } from "./firebase.js";
 import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
 import { importTeachers, deleteAllTeachers } from "./teacherService.js";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
+
+// ─── Animated Active Slice Render Shape ─────────────────────────
+const renderActiveShape = (props) => {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+  return (
+    <g>
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={innerRadius - 2}
+        outerRadius={outerRadius + 7}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        style={{ filter: "drop-shadow(0px 6px 12px rgba(0,0,0,0.18))", transition: "all 0.3s ease" }}
+      />
+    </g>
+  );
+};
 
 // ─── Dashboard-specific sub-components ─────────────────────────
 function MetricCard({ statusKey, count, total, onClick, active }) {
@@ -27,6 +46,183 @@ function MetricCard({ statusKey, count, total, onClick, active }) {
       <div style={{ fontSize: 32, fontWeight: 700, color: "#0F172A", lineHeight: 1 }}>{count}</div>
       <div style={{ fontSize: 13, color: "#64748B", marginTop: 6, fontWeight: 500 }}>
         {pct}% of pool
+      </div>
+    </div>
+  );
+}
+
+function ProgramHealthCard({ programName, scoredTeachers, activeProgram, activeMetric, onSelectFilter }) {
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const programTeachers = scoredTeachers.filter(t => t.program === programName);
+  
+  const c = { "Top Performer": 0, Eligible: 0, Watch: 0, "Perlu Review": 0 };
+  programTeachers.forEach(t => {
+    if (!t.isDisqualified && c[t.status] !== undefined) {
+      c[t.status]++;
+    }
+  });
+
+  const activeCount = Object.values(c).reduce((a, b) => a + b, 0);
+
+  const dData = [
+    { name: "Top Performer", value: c["Top Performer"], color: "#22C55E", status: "Top Performer" },
+    { name: "Eligible",      value: c["Eligible"],      color: "#3B82F6", status: "Eligible" },
+    { name: "Watch",         value: c["Watch"],         color: "#F59E0B", status: "Watch" },
+    { name: "Perlu Review",  value: c["Perlu Review"],  color: "#EF4444", status: "Perlu Review" },
+  ].filter(d => d.value > 0);
+
+  const onPieEnter = (_, index) => {
+    setActiveIndex(index);
+  };
+
+  const onPieLeave = () => {
+    setActiveIndex(-1);
+  };
+
+  const activeSegment = activeIndex >= 0 ? dData[activeIndex] : null;
+  const displayVal = activeSegment ? activeSegment.value : activeCount;
+  const displayLabel = activeSegment ? STATUS_CONFIG[activeSegment.status].label : "Total Active";
+  const displayPct = activeSegment && activeCount > 0 ? Math.round((activeSegment.value / activeCount) * 100) : 100;
+
+  return (
+    <div style={{
+      background: "#FFFFFF",
+      border: "1.5px solid #E2E8F0",
+      borderRadius: 20,
+      padding: "24px",
+      flex: 1,
+      minWidth: 340,
+      boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
+      transition: "all 0.2s ease"
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#4F46E5", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            {programName} Program Health
+          </div>
+          <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+            Distribusi performa {activeCount} tutor {programName} · Klik untuk filter
+          </div>
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, background: "#EEF2FF", color: "#4F46E5", padding: "4px 12px", borderRadius: 100 }}>
+          {activeCount} Tutor
+        </span>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+        {/* Animated Donut Chart with SVG Center Text */}
+        <div style={{ width: 160, height: 160, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <PieChart width={160} height={160}>
+            <Pie
+              cx="50%"
+              cy="50%"
+              activeIndex={activeIndex}
+              activeShape={renderActiveShape}
+              data={dData}
+              dataKey="value"
+              innerRadius={50}
+              outerRadius={68}
+              paddingAngle={4}
+              onMouseEnter={onPieEnter}
+              onMouseLeave={onPieLeave}
+              animationDuration={800}
+              animationEasing="ease-out"
+            >
+              {dData.map((entry, index) => (
+                <Cell 
+                  key={`cell-${index}`} 
+                  fill={entry.color} 
+                  onClick={() => {
+                    if (onSelectFilter) onSelectFilter(programName, entry.status);
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    outline: "none",
+                    opacity: activeIndex === -1 || activeIndex === index ? 1 : 0.4,
+                    transition: "opacity 0.2s ease"
+                  }} 
+                />
+              ))}
+            </Pie>
+            <text 
+              x="50%" 
+              y={activeSegment ? "42%" : "46%"} 
+              textAnchor="middle" 
+              dominantBaseline="middle" 
+              fill="#0F172A" 
+              style={{ fontSize: "22px", fontWeight: 900, cursor: "pointer", userSelect: "none" }}
+              onClick={() => { if (onSelectFilter) onSelectFilter(programName, "All"); }}
+            >
+              {displayVal}
+            </text>
+            <text 
+              x="50%" 
+              y={activeSegment ? "57%" : "59%"} 
+              textAnchor="middle" 
+              dominantBaseline="middle" 
+              fill={activeSegment ? activeSegment.color : "#64748B"} 
+              style={{ fontSize: "10px", fontWeight: 800, cursor: "pointer", userSelect: "none" }}
+              onClick={() => { if (onSelectFilter) onSelectFilter(programName, "All"); }}
+            >
+              {displayLabel}
+            </text>
+            {activeSegment && (
+              <text 
+                x="50%" 
+                y="69%" 
+                textAnchor="middle" 
+                dominantBaseline="middle" 
+                fill="#94A3B8" 
+                style={{ fontSize: "9px", fontWeight: 700, cursor: "pointer", userSelect: "none" }}
+                onClick={() => { if (onSelectFilter) onSelectFilter(programName, "All"); }}
+              >
+                ({displayPct}%)
+              </text>
+            )}
+          </PieChart>
+        </div>
+
+        {/* Dynamic Interactive Cards Grid */}
+        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {["Top Performer", "Eligible", "Watch", "Perlu Review"].map((statusKey) => {
+            const count = c[statusKey];
+            const cfg = STATUS_CONFIG[statusKey];
+            const pct = activeCount > 0 ? Math.round((count / activeCount) * 100) : 0;
+            const dataIndex = dData.findIndex(d => d.status === statusKey);
+            const isHovered = activeIndex === dataIndex && dataIndex !== -1;
+            const isSelected = activeProgram === programName && activeMetric === statusKey;
+
+            return (
+              <div 
+                key={statusKey} 
+                onMouseEnter={() => { if (dataIndex !== -1) setActiveIndex(dataIndex); }}
+                onMouseLeave={() => setActiveIndex(-1)}
+                onClick={() => {
+                  if (onSelectFilter) onSelectFilter(programName, statusKey);
+                }}
+                style={{ 
+                  background: isSelected ? cfg.bg : isHovered ? cfg.bg : "#F8FAFC", 
+                  border: `1.5px solid ${isSelected || isHovered ? cfg.border : "#E2E8F0"}`, 
+                  borderRadius: 12, 
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  transform: isHovered || isSelected ? "translateY(-2px)" : "none",
+                  boxShadow: isSelected ? `0 0 0 3px ${cfg.border}` : isHovered ? `0 6px 16px ${cfg.border}` : "none"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: cfg.dot }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.text }}>{statusKey}</span>
+                  </div>
+                  <span style={{ fontSize: 10, color: "#94A3B8", fontWeight: 600 }}>{pct}%</span>
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{count}</div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -104,147 +300,125 @@ function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken })
 
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50,
+      position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 50,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+      backdropFilter: "blur(4px)"
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: "#FFFFFF", borderRadius: 20, width: "100%", maxWidth: 520,
-        boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden",
+        background: "#FFFFFF", borderRadius: 20, width: "100%", maxWidth: 560,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.2)", overflow: "hidden", maxHeight: "90vh",
+        display: "flex", flexDirection: "column"
       }}>
-        <div style={{ padding: "24px 28px 20px", borderBottom: "1px solid #F1F5F9" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>{teacher.name}</div>
-              <div style={{ fontSize: 13, color: "#64748B", marginTop: 3 }}>
-                {teacher.program} · {teacher.identifier} · Availability: {teacher.availability}
-              </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+        <div style={{ padding: "24px 28px 20px", borderBottom: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 20, fontWeight: 800, color: "#0F172A" }}>{teacher.name}</span>
               <StatusBadge status={status} />
-              <div style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>
-                {score.final}<span style={{ fontSize: 14, fontWeight: 500, color: "#94A3B8" }}>/100</span>
-              </div>
+            </div>
+            <div style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>
+              Program: <strong>{teacher.program}</strong> &nbsp;·&nbsp;
+              Availability: <strong style={{ color: teacher.availability === "Very High" ? "#10B981" : teacher.availability === "High" ? "#3B82F6" : teacher.availability === "Moderate" ? "#F59E0B" : "#EF4444" }}>{teacher.availability}</strong>
             </div>
           </div>
+          <button onClick={onClose} style={{ background: "#F1F5F9", border: "none", borderRadius: "50%", width: 32, height: 32, fontSize: 18, color: "#64748B", cursor: "pointer" }}>×</button>
         </div>
 
-        <div style={{ padding: "20px 28px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 16 }}>
-            Score Breakdown
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {Object.values(breakdown).map(b => (
-                <div key={b.label}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <div style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>
-                      {b.label}
-                      {b.label === "Class Inspection" && b.val === null && (
-                        <span style={{ marginLeft: 8, fontSize: 11, background: "#FEF3C7", color: "#92400E", borderRadius: 6, padding: "1px 7px", fontWeight: 600 }}>Belum Diinspeksi</span>
-                      )}
-                      {b.label === "Compliance" && b.val !== null && b.val < 100 && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "#B91C1C", fontWeight: 600 }}>
-                          (100 {(() => {
-                            let diff = 100 - b.val;
-                            let parts = [];
-                            if (diff >= 20) { parts.push("− 20"); diff -= 20; }
-                            while (diff >= 8) { parts.push("− 8"); diff -= 8; }
-                            while (diff >= 3) { parts.push("− 3"); diff -= 3; }
-                            if (diff > 0) parts.push(`− ${diff}`);
-                            return parts.join(" ") + ` = ${b.val}`;
-                          })()})
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#94A3B8" }}>
-                      {b.val !== null ? `${b.val} × ${Math.round(b.weight * 100)}%` : "—"}
-                      <span style={{ marginLeft: 8, color: "#6366F1", fontWeight: 600 }}>= {b.contrib.toFixed(1)}</span>
-                    </div>
-                  </div>
-                  {b.val !== null ? (
-                    <ScoreBar val={b.val} color="#6366F1" />
-                  ) : (
-                    <div style={{ height: 6, background: "#F1F5F9", borderRadius: 99 }} />
-                  )}
-                </div>
-              ))}
-
-              {penalty > 0 && (
-                <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, color: "#C2410C" }}>⚠ Ganti Tutor Penalty ({teacher.gantiTutor}×)</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#C2410C" }}>−{penalty} poin</span>
-                </div>
-              )}
-
-              {!teacher.hasInspection && (
-                <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
-                  ℹ Bobot redistribusi karena belum diinspeksi (QC 42% · NPS 36% · Compliance 12%)
-                </div>
-              )}
+        <div style={{ padding: "24px 28px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg, #F8FAFC, #EEF2FF)", padding: "16px 20px", borderRadius: 14, border: "1px solid #E0E7FF" }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#6366F1", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Final Score</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: scoreColor(score.final), lineHeight: 1, marginTop: 4 }}>{score.final}<span style={{ fontSize: 18, color: "#94A3B8" }}>/100</span></div>
             </div>
-        </div>
-
-        {!teacher.hasInspection && (
-          <div style={{ padding: "0 28px 16px" }}>
-            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Tanggal Inspeksi</label>
-                <input type="date" value={inspDate} min={minDate} onChange={e => setInspDate(e.target.value)} disabled={isScheduled} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: isScheduled ? "#F8FAFC" : "#FFF", color: isScheduled ? "#94A3B8" : "#0F172A", boxSizing: "border-box" }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Jam Mulai</label>
-                <input type="time" value={inspTime} step="1800" onChange={e => setInspTime(e.target.value)} disabled={isScheduled} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: isScheduled ? "#F8FAFC" : "#FFF", color: isScheduled ? "#94A3B8" : "#0F172A", boxSizing: "border-box" }} />
-              </div>
-            </div>
-            <button onClick={handleTrigger} disabled={loadingCal || isScheduled} style={{
-              width: "100%", background: isScheduled ? "#F0FDF4" : "#FEF3C7", color: isScheduled ? "#16A34A" : "#92400E", border: `1px solid ${isScheduled ? "#BBF7D0" : "#FDE68A"}`,
-              borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, cursor: (loadingCal || isScheduled) ? "not-allowed" : "pointer", transition: "all 0.2s"
-            }}>
-              {loadingCal ? "⏳ Membuat Jadwal..." : isScheduled ? "✅ Inspeksi Dijadwalkan" : "📋 Trigger Jadwal Inspeksi"}
-            </button>
-            {calMsg && (
-              <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: calMsg.type === "success" ? "#F0FDF4" : "#FEF2F2", color: calMsg.type === "success" ? "#16A34A" : "#DC2626", border: `1px solid ${calMsg.type === "success" ? "#BBF7D0" : "#FECACA"}` }}>
-                {calMsg.text}
+            {penalty > 0 && (
+              <div style={{ textAlign: "right", background: "#FEF2F2", padding: "8px 14px", borderRadius: 10, border: "1px solid #FECACA" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#B91C1C" }}>Penalty Applied</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#EF4444" }}>−{penalty} Poin</div>
               </div>
             )}
           </div>
-        )}
 
-        <div style={{ padding: "0 28px 24px", display: "flex", gap: 12 }}>
-          <button onClick={() => setShowDisq(true)} style={{
-            flex: 1, background: "#FEF2F2", border: "1px solid #FECACA",
-            borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, color: "#B91C1C", cursor: "pointer",
-          }}>
-            ⛔ Disqualify Teacher
-          </button>
-          <button onClick={onClose} style={{
-            flex: 1, background: "#F8FAFC", border: "1px solid #E2E8F0",
-            borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer",
-          }}>
-            Tutup
-          </button>
-        </div>
-
-        {showDisq && (
-          <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.95)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, backdropFilter: "blur(4px)" }}>
-            <div style={{ width: "100%", background: "#FFF", borderRadius: 16, border: "1px solid #E2E8F0", padding: 24, boxShadow: "0 10px 40px rgba(0,0,0,0.1)" }}>
-              <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#0F172A" }}>Konfirmasi Disqualify</h3>
-              <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748B" }}>Pilih alasan mendiskualifikasi <b>{teacher.name}</b>:</p>
-              <select value={reason} onChange={e => setReason(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid #E2E8F0", marginBottom: 20 }}>
-                <option>Time Availability</option>
-                <option>QC</option>
-                <option>Compliance</option>
-                <option>Force Majeur</option>
-                <option>Ganti Tutor 3x+</option>
-                <option>Lainnya</option>
-              </select>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => onDisqualify(teacher.id, reason)} style={{ flex: 1, background: "#EF4444", color: "#FFF", border: "none", padding: "10px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Confirm</button>
-                <button onClick={() => setShowDisq(false)} style={{ flex: 1, background: "#F1F5F9", color: "#475569", border: "none", padding: "10px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Batal</button>
-              </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Score Breakdown</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {Object.entries(breakdown).map(([k, item]) => {
+                if (!item) return null;
+                const isIns = k === "inspection";
+                const isMissing = item.val === null;
+                return (
+                  <div key={k} style={{ background: "#F8FAFC", padding: "12px 16px", borderRadius: 12, border: "1px solid #E2E8F0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600, color: "#0F172A", marginBottom: 6 }}>
+                      <span>{item.label}</span>
+                      <span>
+                        {isMissing ? (
+                          <span style={{ fontSize: 11, background: "#FEF3C7", color: "#92400E", padding: "2px 8px", borderRadius: 6 }}>Belum Ada Data</span>
+                        ) : (
+                          `${item.val} × Math.round(${item.weight * 100}%) = +${item.contrib.toFixed(1)}`
+                        )}
+                      </span>
+                    </div>
+                    {!isMissing && <ScoreBar val={item.val} color={k === "qc" ? "#6366F1" : k === "nps" ? "#8B5CF6" : k === "inspection" ? "#06B6D4" : "#10B981"} />}
+                  </div>
+                );
+              })}
             </div>
           </div>
-        )}
+
+          {!teacher.hasInspection && (
+            <div style={{ background: "#FFFBEB", border: "1.5px solid #FDE68A", borderRadius: 14, padding: "16px 20px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>📅 Trigger Jadwal Inspeksi Kelas</div>
+              <div style={{ fontSize: 12, color: "#B45309", marginBottom: 12 }}>Tutor ini belum memiliki nilai Class Inspection. Jadwalkan inspeksi via Google Calendar:</div>
+
+              <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#B45309", marginBottom: 4 }}>TANGGAL INSPEKSI</label>
+                  <input type="date" min={minDate} value={inspDate} onChange={e => setInspDate(e.target.value)} style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #FCD34D", fontSize: 12, outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#B45309", marginBottom: 4 }}>JAM MULAI</label>
+                  <input type="time" value={inspTime} onChange={e => setInspTime(e.target.value)} style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid #FCD34D", fontSize: 12, outline: "none", boxSizing: "border-box" }} />
+                </div>
+              </div>
+
+              {calMsg && (
+                <div style={{ padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, marginBottom: 10, background: calMsg.type === "success" ? "#DCFCE7" : "#FEF2F2", color: calMsg.type === "success" ? "#15803D" : "#B91C1C" }}>
+                  {calMsg.text}
+                </div>
+              )}
+
+              <button disabled={loadingCal || isScheduled} onClick={handleTrigger} style={{ width: "100%", padding: "10px", borderRadius: 10, border: "none", background: isScheduled ? "#10B981" : "linear-gradient(135deg, #F59E0B, #D97706)", color: "#FFF", fontWeight: 700, fontSize: 13, cursor: isScheduled ? "default" : "pointer" }}>
+                {loadingCal ? "⏳ Membuat Event..." : isScheduled ? "✔ Inspeksi Terjadwal" : "📅 Trigger Jadwal Inspeksi"}
+              </button>
+            </div>
+          )}
+
+          <div style={{ paddingTop: 10, borderTop: "1px solid #F1F5F9" }}>
+            {!showDisq ? (
+              <button onClick={() => setShowDisq(true)} style={{ width: "100%", padding: "10px", borderRadius: 10, border: "1.5px solid #FECACA", background: "#FEF2F2", color: "#DC2626", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                ⛔ Disqualify Teacher
+              </button>
+            ) : (
+              <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#991B1B", marginBottom: 8 }}>Pilih Alasan Diskualifikasi:</div>
+                <select value={reason} onChange={e => setReason(e.target.value)} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #FCA5A5", fontSize: 13, marginBottom: 12, outline: "none" }}>
+                  <option value="Time Availability">Time Availability</option>
+                  <option value="QC">QC Score Terlalu Rendah</option>
+                  <option value="Compliance">Pelanggaran Compliance</option>
+                  <option value="Force Majeur">Force Majeur</option>
+                  <option value="Ganti Tutor 3x+">Ganti Tutor 3x+</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setShowDisq(false)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "1px solid #E2E8F0", background: "#FFF", color: "#475569", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>Batal</button>
+                  <button onClick={() => onDisqualify(teacher.id, reason)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: "#DC2626", color: "#FFF", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Konfirmasi Disqualify</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ padding: "16px 28px", background: "#F8FAFC", borderTop: "1px solid #F1F5F9", textAlign: "right" }}>
+          <button onClick={onClose} style={{ padding: "9px 20px", borderRadius: 10, border: "1px solid #CBD5E1", background: "#FFF", color: "#475569", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Tutup</button>
+        </div>
       </div>
     </div>
   );
@@ -317,126 +491,45 @@ function AddTeacherModal({ onSave, onClose }) {
   return <EditModal teacher={blank} onSave={onSave} onClose={onClose} />;
 }
 
-function ProgramHealthCard({ programName, scoredTeachers }) {
-  const programTeachers = scoredTeachers.filter(t => t.program === programName);
-  
-  const c = { "Top Performer": 0, Eligible: 0, Watch: 0, "Perlu Review": 0 };
-  programTeachers.forEach(t => {
-    if (!t.isDisqualified && c[t.status] !== undefined) {
-      c[t.status]++;
-    }
-  });
-
-  const activeCount = Object.values(c).reduce((a, b) => a + b, 0);
-
-  const dData = [
-    { name: "Top Performer", value: c["Top Performer"], color: STATUS_CONFIG["Top Performer"].dot, status: "Top Performer" },
-    { name: "Eligible",      value: c["Eligible"],      color: STATUS_CONFIG["Eligible"].dot, status: "Eligible" },
-    { name: "Watch",         value: c["Watch"],         color: STATUS_CONFIG["Watch"].dot, status: "Watch" },
-    { name: "Perlu Review",  value: c["Perlu Review"],  color: STATUS_CONFIG["Perlu Review"].dot, status: "Perlu Review" },
-  ].filter(d => d.value > 0);
-
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const pct = activeCount > 0 ? Math.round((data.value / activeCount) * 100) : 0;
-      return (
-        <div style={{ background: "#FFF", border: "1px solid #E2E8F0", padding: "12px 16px", borderRadius: 12, boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <div style={{ width: 10, height: 10, borderRadius: "50%", background: data.color }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{STATUS_CONFIG[data.status].label}</span>
-          </div>
-          <div style={{ fontSize: 13, color: "#475569" }}>
-            <span style={{ fontWeight: 600, color: "#0F172A" }}>{data.value}</span> teachers ({pct}%)
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const top5 = programTeachers
-    .filter(t => !t.isDisqualified)
-    .sort((a, b) => b.score.final - a.score.final)
-    .slice(0, 5);
-
+function PaginationBar({ currentPage, totalPages, totalItems, onPageChange, label }) {
+  if (totalItems === 0) return null;
   return (
-    <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ fontSize: 16, fontWeight: 800, color: "#0F172A" }}>Pool Health &mdash; {programName}</div>
-      
-      {programTeachers.length === 0 ? (
-        <div style={{ flex: 1, padding: "40px 20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#94A3B8", background: "#F8FAFC", borderRadius: 12, border: "2px dashed #E2E8F0" }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#64748B" }}>Belum ada data teacher untuk program ini</div>
-          <div style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>Import CSV atau tambah teacher untuk program ini agar muncul di sini</div>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, position: "relative" }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={dData} innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value" stroke="none">
-                    {dData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ position: "absolute", textAlign: "center", pointerEvents: "none" }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{activeCount}</div>
-                <div style={{ fontSize: 10, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 4 }}>Teachers</div>
-              </div>
-            </div>
-            
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {["Top Performer", "Eligible", "Watch", "Perlu Review"].map(s => {
-                const val = c[s];
-                const pct = activeCount > 0 ? Math.round((val / activeCount) * 100) : 0;
-                return (
-                  <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: STATUS_CONFIG[s].dot, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>{s}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{val} <span style={{ color: "#94A3B8", fontWeight: 500, fontSize: 11 }}>({pct}%)</span></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, flexWrap: "wrap", gap: 12, padding: "12px 18px", background: "#FFF", borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+      <div style={{ fontSize: 13, color: "#64748B", fontWeight: 500 }}>
+        Menampilkan <strong>{Math.min((currentPage - 1) * 50 + 1, totalItems)}</strong> - <strong>{Math.min(currentPage * 50, totalItems)}</strong> dari <strong>{totalItems}</strong> {label} (50 tutor per halaman)
+      </div>
 
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>Top 5 Spotlight</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {top5.map((t, idx) => (
-                <div key={t.id} onClick={() => document.getElementById(`row-${t.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                     style={{ 
-                       background: idx === 0 ? "linear-gradient(to right, #EEF2FF, #FFF)" : "#FFF",
-                       border: idx === 0 ? "1.5px solid #C7D2FE" : "1px solid #E2E8F0", 
-                       borderRadius: 12, padding: "12px 16px", cursor: "pointer",
-                       display: "flex", alignItems: "center", gap: 12, transition: "transform 0.15s",
-                       boxShadow: idx === 0 ? "0 4px 12px rgba(79,70,229,0.06)" : "none"
-                     }}
-                     onMouseEnter={e => e.currentTarget.style.transform = "translateX(4px)"}
-                     onMouseLeave={e => e.currentTarget.style.transform = "translateX(0)"}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: idx === 0 ? "#4F46E5" : "#94A3B8", width: 24, textAlign: "center" }}>
-                    #{idx + 1}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: 6 }}>
-                      {t.name}
-                      {idx === 0 && <span style={{ fontSize: 12 }}>👑</span>}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: scoreColor(t.score.final), lineHeight: 1 }}>{t.score.final}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button 
+          disabled={currentPage === 1}
+          onClick={() => onPageChange(currentPage - 1)}
+          style={{
+            padding: "6px 14px", borderRadius: 8, border: "1.5px solid #E2E8F0",
+            background: currentPage === 1 ? "#F8FAFC" : "#FFF",
+            color: currentPage === 1 ? "#CBD5E1" : "#475569",
+            fontWeight: 700, fontSize: 12, cursor: currentPage === 1 ? "not-allowed" : "pointer"
+          }}
+        >
+          ◄ Sebelumnya
+        </button>
+
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", padding: "0 8px" }}>
+          Halaman {currentPage} dari {totalPages}
+        </span>
+
+        <button 
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(currentPage + 1)}
+          style={{
+            padding: "6px 14px", borderRadius: 8, border: "1.5px solid #E2E8F0",
+            background: currentPage >= totalPages ? "#F8FAFC" : "#FFF",
+            color: currentPage >= totalPages ? "#CBD5E1" : "#475569",
+            fontWeight: 700, fontSize: 12, cursor: currentPage >= totalPages ? "not-allowed" : "pointer"
+          }}
+        >
+          Berikutnya ►
+        </button>
+      </div>
     </div>
   );
 }
@@ -456,9 +549,18 @@ export default function DashboardPage({ teachers, setTeachers }) {
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [gToken, setGToken] = useState(null);
-  const fileInputRef = useRef(null);
-  
 
+  // Pagination States (50 items per page)
+  const [pageMain, setPageMain] = useState(1);
+  const [pageOnboarding, setPageOnboarding] = useState(1);
+  const ITEMS_PER_PAGE = 50;
+
+  const fileInputRef = useRef(null);
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPageMain(1);
+  }, [filterProgram, filterStatus, filterAvail, search, activeMetric]);
 
   const downloadTemplate = () => {
     const header = "No,Tier,Nama Tutor,Skor QC,Skor NPS,Jumlah Detractors,Jumlah Passives,Jumlah Promoters,Compliance,Ganti Tutor,Program\n";
@@ -551,6 +653,24 @@ export default function DashboardPage({ teachers, setTeachers }) {
     return true;
   }), [scored, filterProgram, filterStatus, filterAvail, search, activeMetric]);
 
+  // Paginated Main Pool (50 per page)
+  const totalPagesMain = Math.ceil(filtered.length / ITEMS_PER_PAGE) || 1;
+  const paginatedMain = useMemo(() => {
+    const start = (pageMain - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(start, start + ITEMS_PER_PAGE);
+  }, [filtered, pageMain]);
+
+  // Paginated Onboarding / Tutor Baru Pool (50 per page)
+  const newTeachersAll = useMemo(() => {
+    return teachers.filter(t => t.identifier === "Baru" || t.qc === null || t.qc === undefined);
+  }, [teachers]);
+
+  const totalPagesOnboarding = Math.ceil(newTeachersAll.length / ITEMS_PER_PAGE) || 1;
+  const paginatedOnboarding = useMemo(() => {
+    const start = (pageOnboarding - 1) * ITEMS_PER_PAGE;
+    return newTeachersAll.slice(start, start + ITEMS_PER_PAGE);
+  }, [newTeachersAll, pageOnboarding]);
+
   const counts = useMemo(() => {
     const c = { "Top Performer": 0, Eligible: 0, Watch: 0, "Perlu Review": 0, Disqualified: 0 };
     scored.forEach(t => {
@@ -584,10 +704,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
 
   const removeTeacher = async (id) => {
     if (!window.confirm("Apakah Anda yakin ingin menghapus data teacher ini?")) return;
-    
-    // Optimistic update agar UI langsung merespons
     setTeachers(prev => prev.filter(t => t.id !== id));
-    
     try {
       await deleteDoc(doc(db, "teachers", id.toString()));
     } catch (e) {
@@ -606,7 +723,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
     if (!window.confirm("PERINGATAN: Anda yakin ingin MENGHAPUS SEMUA DATA teacher di seluruh aplikasi? Tindakan ini tidak dapat dibatalkan!")) return;
     
     setIsResetting(true);
-    setTeachers([]); // Optimistic clear
+    setTeachers([]);
     try {
       await deleteAllTeachers();
       alert("✅ Semua data berhasil dihapus / diperbarui.");
@@ -648,52 +765,61 @@ export default function DashboardPage({ teachers, setTeachers }) {
             <button onClick={() => setAdding(true)} style={{
               background: "#6366F1", color: "#FFF", border: "none", borderRadius: 10,
               padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
-              boxShadow: "0 4px 12px rgba(99,102,241,0.25)"
+              boxShadow: "0 4px 12px rgba(99,102,241,0.25)",
             }}>+ Tambah Teacher</button>
           </div>
         </div>
 
         {/* Metric Cards */}
         <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-          {["Top Performer", "Eligible", "Watch", "Perlu Review", "Disqualified"].map(s => (
-            <MetricCard key={s} statusKey={s} count={counts[s]} total={teachers.length}
-              active={activeMetric === s}
-              onClick={() => setActiveMetric(activeMetric === s ? null : s)} />
+          {["Top Performer", "Eligible", "Watch", "Perlu Review", "Disqualified"].map(k => (
+            <MetricCard
+              key={k}
+              statusKey={k}
+              count={counts[k]}
+              total={teachers.length}
+              active={activeMetric === k}
+              onClick={() => setActiveMetric(activeMetric === k ? null : k)}
+            />
           ))}
         </div>
 
-        {/* Keterangan Status Tier */}
-        <div style={{ marginBottom: 32, background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 18, padding: "28px 32px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 20, textAlign: "center" }}>Keterangan Status Tier</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-            {[
-              { status: "Top Performer", score: "80–100", desc: "Teacher terbaik, prioritas utama untuk assignment", bg: "rgba(16, 185, 129, 0.05)", border: "rgba(16, 185, 129, 0.15)" },
-              { status: "Eligible", score: "60–79", desc: "Qualified dan siap di-assign", bg: "rgba(59, 130, 246, 0.05)", border: "rgba(59, 130, 246, 0.15)" },
-              { status: "Watch", score: "40–59", desc: "Ada concern, perlu review sebelum assign", bg: "rgba(245, 158, 11, 0.05)", border: "rgba(245, 158, 11, 0.15)" },
-              { status: "Disqualified", score: "< 40", desc: "Tidak eligible, perlu improvement plan", bg: "rgba(239, 68, 68, 0.05)", border: "rgba(239, 68, 68, 0.15)" }
-            ].map(tier => (
-              <div key={tier.status} style={{ 
-                background: tier.bg, border: `1px solid ${tier.border}`, borderRadius: 14, padding: "16px",
-                display: "flex", flexDirection: "column", gap: 8, transition: "all 0.2s"
-              }} onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.05)"; }} onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
-                <div style={{ alignSelf: "flex-start" }}><StatusBadge status={tier.status} /></div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{tier.score}</div>
-                <div style={{ fontSize: 13, color: "#64748B", lineHeight: 1.4 }}>{tier.desc}</div>
-              </div>
-            ))}
-          </div>
+        {/* Program Health Breakdown Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 20, marginBottom: 28 }}>
+          <ProgramHealthCard 
+            programName="Lingua" 
+            scoredTeachers={scored}
+            activeProgram={filterProgram}
+            activeMetric={activeMetric}
+            onSelectFilter={(prog, stat) => {
+              if (filterProgram === prog && activeMetric === stat) {
+                setFilterProgram("All");
+                setActiveMetric(null);
+              } else {
+                setFilterProgram(prog);
+                setActiveMetric(stat === "All" ? null : stat);
+              }
+            }}
+          />
+          <ProgramHealthCard 
+            programName="Intertest" 
+            scoredTeachers={scored}
+            activeProgram={filterProgram}
+            activeMetric={activeMetric}
+            onSelectFilter={(prog, stat) => {
+              if (filterProgram === prog && activeMetric === stat) {
+                setFilterProgram("All");
+                setActiveMetric(null);
+              } else {
+                setFilterProgram(prog);
+                setActiveMetric(stat === "All" ? null : stat);
+              }
+            }}
+          />
         </div>
 
-        {/* Pool Health & Spotlight (Split by Program) */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 24 }}>
-            <ProgramHealthCard programName="Lingua" scoredTeachers={scored} />
-            <ProgramHealthCard programName="Intertest" scoredTeachers={scored} />
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        {/* Filters Bar */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama teacher..."
               style={{ width: "100%", padding: "9px 12px 9px 36px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", boxSizing: "border-box" }} />
@@ -725,7 +851,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
           </select>
         </div>
 
-        {/* Table */}
+        {/* Main Ranking Table */}
         <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 900 }}>
             <thead>
@@ -736,71 +862,183 @@ export default function DashboardPage({ teachers, setTeachers }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t, i) => (
-                <tr key={t.id} id={`row-${t.id}`} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.2s" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                  <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>{t.rank === "—" ? "—" : `#${t.rank}`}</td>
-                  <td style={{ padding: "14px 16px" }}>
-                    <div style={{ fontWeight: 600, color: "#0F172A" }}>{t.name}</div>
-                    {(t.gantiTutor === 1 || t.gantiTutor === 2) && (
-                      <div style={{ fontSize: 10, color: "#B45309", fontWeight: 600, marginTop: 2 }}>⚠ Flagged</div>
-                    )}
-                  </td>
-                  <td style={{ padding: "14px 16px" }}>
-                    <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 600 }}>{t.program}</span>
-                  </td>
-                  <td style={{ padding: "14px 16px", fontSize: 12, fontWeight: 600, color: t.availability === "Very High" ? "#10B981" : t.availability === "High" ? "#3B82F6" : t.availability === "Moderate" ? "#F59E0B" : t.availability === "Low" ? "#EF4444" : t.availability === "Very Low" ? "#7F1D1D" : "#64748B" }}>
-                    {t.availability || "—"}
-                  </td>
-                  <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.qc} color="#6366F1" /></td>
-                  <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.nps} color="#8B5CF6" /></td>
-                  <td style={{ padding: "14px 16px", minWidth: 110 }}>
-                    {t.hasInspection
-                      ? <ScoreBar val={t.inspection || 0} color="#06B6D4" />
-                      : <span style={{ fontSize: 11, background: "#FEF3C7", color: "#92400E", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Belum Diinspeksi</span>
-                    }
-                  </td>
-                  <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.compliance} color="#10B981" /></td>
-                  <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                    {(() => {
-                      const c = t.gantiTutor;
-                      const bg = c === 0 ? "#F1F5F9" : c === 1 ? "#FEF3C7" : c === 2 ? "#FFEDD5" : "#FEF2F2";
-                      const text = c === 0 ? "#64748B" : c === 1 ? "#D97706" : c === 2 ? "#EA580C" : "#DC2626";
-                      return (
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                          <span style={{ background: bg, color: text, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{c}/3</span>
-                          {c === 1 || c === 2 ? <span style={{ color: "#C2410C", fontWeight: 700, fontSize: 11 }}>−10</span> : null}
-                        </div>
-                      )
-                    })()}
-                  </td>
-                  <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                    {t.isDisqualified ? (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>0</span>
-                        <span style={{ fontSize: 10, background: "#FEF2F2", color: "#B91C1C", padding: "3px 6px", borderRadius: 4, fontWeight: 600, marginTop: 4, whiteSpace: "nowrap" }}>Excluded: {t.disqualifiedReason}</span>
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>{t.score.final}</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "14px 16px" }}><StatusBadge status={t.status} small /></td>
-                  <td style={{ padding: "14px 16px" }}>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => setDrill({ teacher: t, score: t.score })} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E0E7FF", background: "#EEF2FF", color: "#4F46E5", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Detail</button>
-                      <button onClick={() => setEditing(t)} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E2E8F0", background: "#F8FAFC", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Edit</button>
-                      <button onClick={() => removeTeacher(t.id)} style={{ padding: "5px 9px", borderRadius: 7, border: "1.5px solid #FECACA", background: "#FEF2F2", color: "#B91C1C", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>×</button>
-                    </div>
+              {paginatedMain.length === 0 ? (
+                <tr>
+                  <td colSpan={12} style={{ textAlign: "center", padding: "40px 0", color: "#94A3B8", fontSize: 14 }}>
+                    Tidak ada data teacher reguler yang cocok dengan filter.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                paginatedMain.map((t, i) => (
+                  <tr key={t.id} id={`row-${t.id}`} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.2s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>{t.rank === "—" ? "—" : `#${t.rank}`}</td>
+                    <td style={{ padding: "14px 16px" }}>
+                      <div style={{ fontWeight: 600, color: "#0F172A" }}>{t.name}</div>
+                      {(t.gantiTutor === 1 || t.gantiTutor === 2) && (
+                        <div style={{ fontSize: 10, color: "#B45309", fontWeight: 600, marginTop: 2 }}>⚠ Flagged</div>
+                      )}
+                    </td>
+                    <td style={{ padding: "14px 16px" }}>
+                      <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 600 }}>{t.program}</span>
+                    </td>
+                    <td style={{ padding: "14px 16px", fontSize: 12, fontWeight: 600, color: t.availability === "Very High" ? "#10B981" : t.availability === "High" ? "#3B82F6" : t.availability === "Moderate" ? "#F59E0B" : t.availability === "Low" ? "#EF4444" : t.availability === "Very Low" ? "#7F1D1D" : "#64748B" }}>
+                      {t.availability || "—"}
+                    </td>
+                    <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.qc} color="#6366F1" /></td>
+                    <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.nps} color="#8B5CF6" /></td>
+                    <td style={{ padding: "14px 16px", minWidth: 110 }}>
+                      {t.hasInspection
+                        ? <ScoreBar val={t.inspection || 0} color="#06B6D4" />
+                        : <span style={{ fontSize: 11, background: "#FEF3C7", color: "#92400E", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Belum Diinspeksi</span>
+                      }
+                    </td>
+                    <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.compliance} color="#10B981" /></td>
+                    <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                      {(() => {
+                        const c = t.gantiTutor;
+                        const bg = c === 0 ? "#F1F5F9" : c === 1 ? "#FEF3C7" : c === 2 ? "#FFEDD5" : "#FEF2F2";
+                        const text = c === 0 ? "#64748B" : c === 1 ? "#D97706" : c === 2 ? "#EA580C" : "#DC2626";
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                            <span style={{ background: bg, color: text, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{c}/3</span>
+                            {c === 1 || c === 2 ? <span style={{ color: "#C2410C", fontWeight: 700, fontSize: 11 }}>−10</span> : null}
+                          </div>
+                        )
+                      })()}
+                    </td>
+                    <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                      {t.isDisqualified ? (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>0</span>
+                          <span style={{ fontSize: 10, background: "#FEF2F2", color: "#B91C1C", padding: "3px 6px", borderRadius: 4, fontWeight: 600, marginTop: 4, whiteSpace: "nowrap" }}>Excluded: {t.disqualifiedReason}</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>{t.score.final}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "14px 16px" }}><StatusBadge status={t.status} small /></td>
+                    <td style={{ padding: "14px 16px" }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => setDrill({ teacher: t, score: t.score })} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E0E7FF", background: "#EEF2FF", color: "#4F46E5", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Detail</button>
+                        <button onClick={() => setEditing(t)} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E2E8F0", background: "#F8FAFC", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Edit</button>
+                        <button onClick={() => removeTeacher(t.id)} style={{ padding: "5px 9px", borderRadius: 7, border: "1.5px solid #FECACA", background: "#FEF2F2", color: "#B91C1C", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>×</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        <div style={{ marginTop: 16, fontSize: 12, color: "#94A3B8", textAlign: "right" }}>
-          Menampilkan {filtered.length} dari {teachers.length} teacher · Klik metric card untuk filter cepat · Klik Detail untuk breakdown score
+        {/* Pagination Bar for Main Pool */}
+        <PaginationBar 
+          currentPage={pageMain} 
+          totalPages={totalPagesMain} 
+          totalItems={filtered.length} 
+          onPageChange={setPageMain} 
+          label="Tutor Reguler" 
+        />
+
+        {/* ─── TABEL KHUSUS: TUTOR BARU (BELUM PUNYA STUDENT / SKOR QC) ─── */}
+        <div style={{ marginTop: 48, background: "#F8FAFC", border: "1.5px solid #E2E8F0", borderRadius: 20, padding: "24px", boxShadow: "0 4px 20px rgba(0,0,0,0.03)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 20 }}>🌱</span>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: 0 }}>Daftar Tutor Baru & Onboarding (Belum Punya Student / QC)</h2>
+                <span style={{ background: "#FEF3C7", color: "#B45309", fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 100 }}>{newTeachersAll.length} Tutor</span>
+              </div>
+              <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>
+                Tutor yang belum memiliki riwayat student atau skor QC awal. Update data manual atau promosikan ke Pool Utama.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setAdding(true)} style={{
+                background: "#4F46E5", color: "#FFF", border: "none", borderRadius: 10,
+                padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(79,70,229,0.25)"
+              }}>
+                ➕ Tambah Tutor Baru Manual
+              </button>
+            </div>
+          </div>
+
+          <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 14, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 850 }}>
+              <thead style={{ background: "#FFFBEB", borderBottom: "1.5px solid #FDE68A" }}>
+                <tr>
+                  {["Nama Tutor Baru", "Program", "Availability", "Kelengkapan Data", "Status", "Actions"].map(h => (
+                    <th key={h} style={{ padding: "12px 16px", textAlign: h === "Actions" ? "right" : "left", fontWeight: 700, fontSize: 11, color: "#92400E", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedOnboarding.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "40px 0", color: "#94A3B8", fontSize: 13 }}>
+                      Tidak ada tutor baru di tahap onboarding saat ini.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedOnboarding.map(t => {
+                    return (
+                      <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.2s" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#FFFDF5"}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        <td style={{ padding: "14px 16px", fontWeight: 700, color: "#0F172A" }}>{t.name}</td>
+                        <td style={{ padding: "14px 16px" }}>
+                          <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 600 }}>{t.program}</span>
+                        </td>
+                        <td style={{ padding: "14px 16px", fontSize: 12, fontWeight: 600, color: "#64748B" }}>
+                          {t.availability || "Moderate"}
+                        </td>
+                        <td style={{ padding: "14px 16px" }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: t.qc !== null ? "#DCFCE7" : "#FEF2F2", color: t.qc !== null ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
+                              {t.qc !== null ? `✔ QC: ${t.qc}` : "✖ QC"}
+                            </span>
+                            <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: t.nps !== null ? "#DCFCE7" : "#FEF2F2", color: t.nps !== null ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
+                              {t.nps !== null ? `✔ NPS: ${t.nps}` : "✖ NPS"}
+                            </span>
+                            <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: t.compliance !== null ? "#DCFCE7" : "#FEF2F2", color: t.compliance !== null ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
+                              {t.compliance !== null ? `✔ Comp: ${t.compliance}` : "✖ Comp"}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ padding: "14px 16px" }}>
+                          <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>🌱 Onboarding</span>
+                        </td>
+                        <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button onClick={() => setEditing(t)} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E2E8F0", background: "#FFF", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>✏ Edit Manual</button>
+                            <button onClick={async () => {
+                              if (confirm(`Promosikan ${t.name} ke Pool Utama Matchmaking?`)) {
+                                updateTeacher({ ...t, identifier: "Lama" });
+                                alert(`✅ ${t.name} berhasil dipromosikan ke Pool Utama!`);
+                              }
+                            }} style={{ padding: "5px 11px", borderRadius: 7, border: "none", background: "#4F46E5", color: "#FFF", fontWeight: 700, cursor: "pointer", fontSize: 11 }}>🚀 Promote</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Bar for Onboarding Pool */}
+          <PaginationBar 
+            currentPage={pageOnboarding} 
+            totalPages={totalPagesOnboarding} 
+            totalItems={newTeachersAll.length} 
+            onPageChange={setPageOnboarding} 
+            label="Tutor Baru & Onboarding" 
+          />
         </div>
 
       {drill && (

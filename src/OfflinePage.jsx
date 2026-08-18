@@ -1,271 +1,138 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Papa from "papaparse";
-import { MapContainer, TileLayer, Marker, Popup, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { INITIAL_TEACHERS, calcScore, getStatus, STATUS_CONFIG, scoreColor } from "./scoring.js";
-import { StatusBadge, ScoreBar } from "./components.jsx";
-import { useGoogleLogin } from "@react-oauth/google";
-import { db } from "./firebase.js";
-import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
-import { deleteAllTeachers } from "./teacherService.js";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
+import { deleteAllTeachers } from "./teacherService.js";
 
-function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken }) {
-  const { breakdown, penalty } = score;
-  const status = getStatus(score, teacher);
-  const [showDisq, setShowDisq] = useState(false);
-  const [reason, setReason] = useState("Time Availability");
-  const [loadingCal, setLoadingCal] = useState(false);
-  const [calMsg, setCalMsg] = useState(null);
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const defDate = tomorrow.toISOString().split("T")[0];
-  const minDate = new Date().toISOString().split("T")[0];
-
-  const [inspDate, setInspDate] = useState(defDate);
-  const [inspTime, setInspTime] = useState("09:00");
-  const [isScheduled, setIsScheduled] = useState(false);
-
-  const createEvent = async (token) => {
-    setLoadingCal(true);
-    setCalMsg(null);
-    try {
-      const [year, month, day] = inspDate.split("-");
-      const [hours, minutes] = inspTime.split(":");
-      const start = new Date(year, month - 1, day, hours, minutes, 0, 0);
-      const end = new Date(start);
-      end.setHours(start.getHours() + 1);
-
-      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          summary: `Inspeksi Class — ${teacher.name}`,
-          description: `Jadwal inspeksi untuk ${teacher.name} · Program: ${teacher.program}`,
-          start: { dateTime: start.toISOString(), timeZone: "Asia/Jakarta" },
-          end: { dateTime: end.toISOString(), timeZone: "Asia/Jakarta" }
-        })
-      });
-
-      if (!res.ok) throw new Error("Gagal membuat event");
-      setCalMsg({ type: "success", text: "✅ Event inspeksi berhasil dibuat di Google Calendar" });
-      setIsScheduled(true);
-    } catch (err) {
-      setCalMsg({ type: "error", text: "❌ " + err.message });
-    } finally {
-      setLoadingCal(false);
+// Helper component to center map smoothly on selected branch or bounds
+function MapRecenter({ center, zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center && center[0] !== undefined && center[1] !== undefined && !isNaN(center[0]) && !isNaN(center[1])) {
+      map.flyTo(center, zoom || map.getZoom(), { duration: 1.2 });
     }
-  };
+  }, [center, zoom, map]);
+  return null;
+}
 
-  const login = useGoogleLogin({
-    scope: "https://www.googleapis.com/auth/calendar.events",
-    onSuccess: (tokenResponse) => { setGToken(tokenResponse.access_token); createEvent(tokenResponse.access_token); },
-    onError: () => setCalMsg({ type: "error", text: "❌ Google Login dibatalkan atau gagal" })
+const CITY_GEOCODING_FALLBACKS = {
+  "jakarta": { lat: -6.2088, lng: 106.8456 },
+  "jakarta selatan": { lat: -6.2615, lng: 106.8106 },
+  "jakarta timur": { lat: -6.2250, lng: 106.9004 },
+  "jakarta barat": { lat: -6.1683, lng: 106.7589 },
+  "jakarta utara": { lat: -6.1384, lng: 106.8640 },
+  "jakarta pusat": { lat: -6.1805, lng: 106.8283 },
+  "bekasi": { lat: -6.2415, lng: 106.9924 },
+  "tangerang": { lat: -6.1702, lng: 106.6403 },
+  "tangerang selatan": { lat: -6.2886, lng: 106.7179 },
+  "depok": { lat: -6.4025, lng: 106.7942 },
+  "bogor": { lat: -6.5971, lng: 106.7900 },
+  "bandung": { lat: -6.9175, lng: 107.6191 },
+  "surabaya": { lat: -7.2504, lng: 112.7688 },
+  "malang": { lat: -7.9666, lng: 112.6326 },
+  "semarang": { lat: -6.9667, lng: 110.4167 },
+  "yogyakarta": { lat: -7.7956, lng: 110.3695 },
+  "solo": { lat: -7.5755, lng: 110.8243 },
+  "surakarta": { lat: -7.5755, lng: 110.8243 },
+  "medan": { lat: 3.5800, lng: 98.6700 },
+  "palembang": { lat: -2.9909, lng: 104.7566 },
+  "pekanbaru": { lat: 0.5071, lng: 101.4478 },
+  "padang": { lat: -0.9471, lng: 100.4172 },
+  "lampung": { lat: -5.4500, lng: 105.2667 },
+  "bandar lampung": { lat: -5.4500, lng: 105.2667 },
+  "denpasar": { lat: -8.6500, lng: 115.2167 },
+  "bali": { lat: -8.6500, lng: 115.2167 },
+  "makassar": { lat: -5.1477, lng: 119.4327 },
+  "manado": { lat: 1.4748, lng: 124.8428 },
+  "balikpapan": { lat: -1.2379, lng: 116.8529 },
+  "samarinda": { lat: -0.5022, lng: 117.1536 },
+  "pontianak": { lat: -0.0263, lng: 109.3425 },
+  "banjarmasin": { lat: -3.3167, lng: 114.5900 },
+  "default": { lat: -2.5489, lng: 118.0149 }
+};
+
+// Helper to parse CSV content into structured tutor records
+const parseTutorsFromCSV = (csvText, programName) => {
+  const parsed = Papa.parse(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    dynamicTyping: false
   });
 
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#FFFFFF", borderRadius: 20, width: "100%", maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden" }}>
-        <div style={{ padding: "24px 28px 20px", borderBottom: "1px solid #F1F5F9" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>{teacher.name}</div>
-              <div style={{ fontSize: 13, color: "#64748B", marginTop: 3 }}>{teacher.program} · {teacher.identifier} · Availability: {teacher.availability}</div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-              <StatusBadge status={status} />
-              <div style={{ fontSize: 26, fontWeight: 800, color: "#0F172A" }}>{score.final}<span style={{ fontSize: 14, fontWeight: 500, color: "#94A3B8" }}>/100</span></div>
-            </div>
-          </div>
-        </div>
-        <div style={{ padding: "20px 28px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 16 }}>Score Breakdown</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {Object.values(breakdown).map(b => (
-              <div key={b.label}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <div style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>
-                    {b.label}
-                    {b.label === "Class Inspection" && b.val === null && <span style={{ marginLeft: 8, fontSize: 11, background: "#FEF3C7", color: "#92400E", borderRadius: 6, padding: "1px 7px", fontWeight: 600 }}>Belum Diinspeksi</span>}
-                    {b.label === "Compliance" && b.val !== null && b.val < 100 && (
-                      <span style={{ marginLeft: 8, fontSize: 11, color: "#B91C1C", fontWeight: 600 }}>(100 − {100 - b.val} = {b.val})</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#94A3B8" }}>
-                    {b.val !== null ? `${b.val} × ${Math.round(b.weight * 100)}%` : "—"}
-                    <span style={{ marginLeft: 8, color: "#6366F1", fontWeight: 600 }}>= {b.contrib.toFixed(1)}</span>
-                  </div>
-                </div>
-                {b.val !== null ? <ScoreBar val={b.val} color="#6366F1" /> : <div style={{ height: 6, background: "#F1F5F9", borderRadius: 99 }} />}
-              </div>
-            ))}
-            {penalty > 0 && (
-              <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, color: "#C2410C" }}>⚠ Ganti Tutor Penalty ({teacher.gantiTutor}×)</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#C2410C" }}>−{penalty} poin</span>
-              </div>
-            )}
-            {!teacher.hasInspection && (
-              <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
-                ℹ Bobot redistribusi karena belum diinspeksi (QC 42% · NPS 36% · Compliance 12%)
-              </div>
-            )}
-          </div>
-        </div>
-        {!teacher.hasInspection && (
-          <div style={{ padding: "0 28px 16px" }}>
-            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase" }}>Tanggal Inspeksi</label>
-                <input type="date" value={inspDate} min={minDate} onChange={e => setInspDate(e.target.value)} disabled={isScheduled} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase" }}>Jam Mulai</label>
-                <input type="time" value={inspTime} step="1800" onChange={e => setInspTime(e.target.value)} disabled={isScheduled} style={{ width: "100%", padding: "10px 14px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
-              </div>
-            </div>
-            <button onClick={() => gToken ? createEvent(gToken) : login()} disabled={loadingCal || isScheduled} style={{ width: "100%", background: isScheduled ? "#F0FDF4" : "#FEF3C7", color: isScheduled ? "#16A34A" : "#92400E", border: `1px solid ${isScheduled ? "#BBF7D0" : "#FDE68A"}`, borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, cursor: (loadingCal || isScheduled) ? "not-allowed" : "pointer", transition: "all 0.2s" }}>
-              {loadingCal ? "⏳ Membuat Jadwal..." : isScheduled ? "✅ Inspeksi Dijadwalkan" : "📋 Trigger Jadwal Inspeksi"}
-            </button>
-            {calMsg && <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: calMsg.type === "success" ? "#F0FDF4" : "#FEF2F2", color: calMsg.type === "success" ? "#16A34A" : "#DC2626" }}>{calMsg.text}</div>}
-          </div>
-        )}
-        <div style={{ padding: "0 28px 24px", display: "flex", gap: 12 }}>
-          <button onClick={() => setShowDisq(true)} style={{ flex: 1, background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, color: "#B91C1C", cursor: "pointer" }}>⛔ Disqualify</button>
-          <button onClick={onClose} style={{ flex: 1, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>Tutup</button>
-        </div>
-        {showDisq && (
-          <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.95)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-            <div style={{ width: "100%", background: "#FFF", borderRadius: 16, border: "1px solid #E2E8F0", padding: 24 }}>
-              <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#0F172A" }}>Konfirmasi Disqualify</h3>
-              <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748B" }}>Pilih alasan mendiskualifikasi <b>{teacher.name}</b>:</p>
-              <select value={reason} onChange={e => setReason(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid #E2E8F0", marginBottom: 20 }}>
-                <option>Time Availability</option>
-                <option>QC</option>
-                <option>Compliance</option>
-                <option>Force Majeur</option>
-                <option>Lainnya</option>
-              </select>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => onDisqualify(teacher.id, reason)} style={{ flex: 1, background: "#EF4444", color: "#FFF", border: "none", padding: "10px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Confirm</button>
-                <button onClick={() => setShowDisq(false)} style={{ flex: 1, background: "#F1F5F9", color: "#475569", border: "none", padding: "10px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Batal</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+  const records = [];
 
-function EditModal({ teacher, onSave, onClose }) {
-  const [form, setForm] = useState({ ...teacher });
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const fields = [
-    { key: "name",        label: "Nama Teacher",             type: "text"   },
-    { key: "program",     label: "Program",                  type: "select", opts: ["Lingua", "Intertest"] },
-    { key: "kota",        label: "Kota",                     type: "text"   },
-    { key: "qc",          label: "QC Score (0–100)",         type: "number", min: 0, max: 100 },
-    { key: "nps",         label: "NPS Tutor (0–100)",        type: "number", min: 0, max: 100 },
-    { key: "inspection",  label: "Class Inspection (0–100)", type: "number", min: 0, max: 100 },
-    { key: "compliance",  label: "Compliance (0–100)",       type: "number", min: 0, max: 100 },
-    { key: "gantiTutor",  label: "Ganti Tutor Count",        type: "number", min: 0, max: 10  },
-    { key: "availability",label: "Tingkat Availability",     type: "select", opts: ["Very High", "High", "Moderate", "Low", "Very Low"] },
-  ];
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#FFF", borderRadius: 20, width: "100%", maxWidth: 460, overflow: "hidden" }}>
-        <div style={{ padding: "22px 28px 18px", borderBottom: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#0F172A" }}>Edit Teacher</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#94A3B8" }}>×</button>
-        </div>
-        <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: 14, maxHeight: "60vh", overflowY: "auto" }}>
-          {fields.map(f => (
-            <div key={f.key}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#64748B", display: "block", marginBottom: 5 }}>{f.label}</label>
-              {f.type === "select" ? (
-                <select value={form[f.key]} onChange={e => set(f.key, e.target.value)} style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 9, fontSize: 13 }}>
-                  {f.opts.map(o => <option key={o}>{o}</option>)}
-                </select>
-              ) : (
-                <input type={f.type} value={form[f.key]} onChange={e => set(f.key, f.type === "number" ? +e.target.value : e.target.value)} style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 9, fontSize: 13 }} />
-              )}
-            </div>
-          ))}
-        </div>
-        <div style={{ padding: "16px 28px 22px", display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "#F8FAFC", border: "1.5px solid #E2E8F0", cursor: "pointer", fontWeight: 600, color: "#475569" }}>Batal</button>
-          <button onClick={() => { onSave(form); onClose(); }} style={{ flex: 2, padding: "10px 0", borderRadius: 10, background: "#6366F1", color: "#FFF", border: "none", cursor: "pointer", fontWeight: 700 }}>Simpan</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+  parsed.data.forEach((row, idx) => {
+    const rawTutor = (row["Tutor"] || row["Nama Tutor"] || row["Nama"] || "").trim();
+    if (!rawTutor) return; // IGNORE rows without tutors as requested
 
+    const branchName = (row["Name"] || row["Nama Cabang"] || row["Cabang"] || "").trim();
+    const uniqueName = (row["Unique Name"] || row["Kode Cabang"] || branchName || "Cabang Baru").trim();
+    const regional = (row["First Name"] || row["Regional"] || row["Kota"] || row["City"] || "Lainnya").trim();
+    const academy = (row["Academy Ruangguru"] || row["Academy"] || "Brain Academy").trim();
+    const address = (row["Address"] || row["Alamat"] || "").trim();
+    
+    let lat = parseFloat(row["Latitude"] || row["Lat"]);
+    let lng = parseFloat(row["Longitude"] || row["Lng"] || row["Long"]);
 
+    if (isNaN(lat) || isNaN(lng)) {
+      const regKey = regional.toLowerCase().trim();
+      const fallback = CITY_GEOCODING_FALLBACKS[regKey] || CITY_GEOCODING_FALLBACKS["default"];
+      lat = fallback.lat;
+      lng = fallback.lng;
+    }
 
-function MetricCard({ statusKey, count, total, onClick, active, icon, labelOverride }) {
-  const c = STATUS_CONFIG[statusKey] || { bg: "#FFFFFF", border: "#E2E8F0", text: "#64748B", label: labelOverride };
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-  return (
-    <div onClick={onClick} style={{
-      background: active ? c.bg : "#FFFFFF",
-      border: `1.5px solid ${active ? c.border : "#E2E8F0"}`,
-      borderRadius: 14, padding: "16px 20px", cursor: onClick ? "pointer" : "default",
-      transition: "all 0.18s", display: "flex", flexDirection: "column", justifyContent: "space-between",
-      boxShadow: active ? `0 0 0 3px ${c.border}` : "0 1px 3px rgba(0,0,0,0.06)",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        {icon && <div style={{ fontSize: 16 }}>{icon}</div>}
-        <div style={{ fontSize: 11, fontWeight: 700, color: c.text || "#475569", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          {labelOverride || c.label}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize: 32, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{count}</div>
-        <div style={{ fontSize: 12, color: "#64748B", marginTop: 4, fontWeight: 600 }}>
-          {pct}% of displayed
-        </div>
-      </div>
-    </div>
-  );
-}
+    const tutorList = rawTutor
+      .split(/[\r\n,]+/)
+      .map(t => t.strip ? t.strip() : t.trim())
+      .filter(t => t.length > 0);
 
-export default function OfflinePage({ teachers, setTeachers }) {
-  const [selectedCity, setSelectedCity] = useState("All");
-  const [activeMetric, setActiveMetric] = useState(null);
-  const [tooltipContent, setTooltipContent] = useState("");
+    tutorList.forEach((tutorName, subIdx) => {
+      records.push({
+        id: `${programName}-${idx}-${subIdx}-${tutorName.replace(/\s+/g, '_')}`,
+        tutorName,
+        program: programName,
+        branchName,
+        uniqueName,
+        regional,
+        academy,
+        address,
+        lat,
+        lng
+      });
+    });
+  });
 
-  const [drill, setDrill] = useState(null);
-  const [editing, setEditing] = useState(null);
-  const [gToken, setGToken] = useState(null);
+  return records;
+};
+
+export default function OfflinePage() {
+  const [linguaData, setLinguaData] = useState([]);
+  const [intertestData, setIntertestData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  // Filter States
+  const [selectedProgram, setSelectedProgram] = useState("All"); // All, Lingua, Intertest
+  const [selectedRegional, setSelectedRegional] = useState("All");
+  const [selectedBranchKey, setSelectedBranchKey] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("map"); // 'map' or 'table'
+  const [expandedRegional, setExpandedRegional] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
 
-  const updateTeacher = async (updated) => {
-    try {
-      await setDoc(doc(db, "teachers", updated.id.toString()), updated, { merge: true });
-    } catch (e) {
-      console.error("Error updating teacher:", e);
-      alert("Gagal update: " + e.message);
-    }
+  // Download Template CSV Offline
+  const downloadTemplate = () => {
+    const header = "No,Academy Ruangguru,Name,Address,Unique Name,First Name,End Name,Tutor,Latitude,Longitude\n1,Brain Academy,Bekasi - Cibubur,\"Jl. Alternatif Cibubur No.35A\",BAC Cibubur,Bekasi,Cibubur,Siti Aisyah,-6.378482,106.9194989\n";
+    const blob = new Blob([header], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "Template_Offline_BAC_EAC.csv";
+    link.click();
   };
 
-  const removeTeacher = async (id) => {
-    if (!window.confirm("Apakah Anda yakin ingin menghapus data teacher ini?")) return;
-
-    // Optimistic update
-    setTeachers(prev => prev.filter(t => t.id !== id));
-
-    try {
-      await deleteDoc(doc(db, "teachers", id.toString()));
-    } catch (e) {
-      console.error("Error removing teacher:", e);
-      alert("Gagal menghapus: " + e.message);
-    }
-  };
-
+  // Reset / Perbarui Data (Password Protected)
   const handleResetData = async () => {
     const userPass = window.prompt("Masukkan kata sandi untuk memperbarui/menghapus data:");
     if (userPass !== targaryenPassword.trim()) {
@@ -274,452 +141,1095 @@ export default function OfflinePage({ teachers, setTeachers }) {
     }
 
     if (!window.confirm("PERINGATAN: Anda yakin ingin MENGHAPUS SEMUA DATA teacher di seluruh aplikasi? Tindakan ini tidak dapat dibatalkan!")) return;
-    
+
     setIsResetting(true);
-    setTeachers([]); // Optimistic clear
+    setLinguaData([]);
+    setIntertestData([]);
     try {
       await deleteAllTeachers();
       alert("✅ Semua data berhasil dihapus / diperbarui.");
     } catch (e) {
-      console.error("Gagal menghapus data:", e);
+      console.error("Gagal mereset data:", e);
       alert("❌ Gagal mereset data: " + e.message);
     } finally {
       setIsResetting(false);
     }
   };
 
-  const fileInputRef = useRef(null);
+  const fileInputLinguaRef = useRef(null);
+  const fileInputIntertestRef = useRef(null);
 
-  const offlineTeachers = useMemo(() => teachers.filter(t => t.kota), [teachers]);
+  // Auto load default CSVs on initial mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchDefaultCSVs = async () => {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const [resLingua, resIntertest] = await Promise.all([
+          fetch("/csv/BAC&EAC Lingua.csv").catch(() => null),
+          fetch("/csv/BAC&EAC Intertest.csv").catch(() => null)
+        ]);
 
-  // Grouping teachers by city for the map
-  const cityGroups = useMemo(() => {
-    const groups = {};
-    offlineTeachers.forEach(t => {
-      if (!groups[t.kota]) {
-        groups[t.kota] = {
-          kota: t.kota,
-          lat: t.lat,
-          lng: t.lng,
-          teachers: [],
-          bestStatus: null,
-          bestScore: -1
-        };
+        if (resLingua && resLingua.ok) {
+          const txtLingua = await resLingua.text();
+          const linguaParsed = parseTutorsFromCSV(txtLingua, "Lingua");
+          if (isMounted) setLinguaData(linguaParsed);
+        }
+
+        if (resIntertest && resIntertest.ok) {
+          const txtIntertest = await resIntertest.text();
+          const intertestParsed = parseTutorsFromCSV(txtIntertest, "Intertest");
+          if (isMounted) setIntertestData(intertestParsed);
+        }
+      } catch (err) {
+        console.error("Error loading initial CSV files:", err);
+        if (isMounted) setErrorMsg("Gagal memuat data CSV default: " + err.message);
+      } finally {
+        if (isMounted) setLoading(false);
       }
-      const score = calcScore(t);
-      const status = getStatus(score, t);
-      groups[t.kota].teachers.push({ ...t, score, status });
-      
-      if (score.final > groups[t.kota].bestScore) {
-        groups[t.kota].bestScore = score.final;
-        groups[t.kota].bestStatus = status;
-      }
-    });
-    return Object.values(groups);
-  }, [offlineTeachers]);
+    };
 
-  const scored = useMemo(() => {
-    const list = offlineTeachers.map(t => {
-      const score = calcScore(t);
-      return { ...t, score, status: getStatus(score, t) };
-    }).sort((a, b) => b.score.final - a.score.final);
+    fetchDefaultCSVs();
+    return () => { isMounted = false; };
+  }, []);
 
-    let rankCounter = 1;
-    return list.map(t => {
-      if (t.identifier !== "Baru" && !t.isDisqualified) {
-        return { ...t, rank: rankCounter++ };
-      }
-      return { ...t, rank: "—" };
-    });
-  }, [offlineTeachers]);
-
-  const filtered = useMemo(() => scored.filter(t => {
-    if (selectedCity !== "All" && t.kota !== selectedCity) return false;
-    if (activeMetric && t.status !== activeMetric) return false;
-    return true;
-  }), [scored, selectedCity, activeMetric]);
-
-  const counts = useMemo(() => {
-    const c = { "Top Performer": 0, Eligible: 0, Watch: 0, "Perlu Review": 0, Disqualified: 0 };
-    filtered.forEach(t => {
-      if (t.isDisqualified) {
-        c["Disqualified"]++;
-      } else if (c[t.status] !== undefined) {
-        c[t.status]++;
-      }
-    });
-    return c;
-  }, [filtered]);
-  
-
-
-  const downloadTemplate = () => {
-    const header = "No,Tier,Nama Tutor,Kota,Skor QC,Skor NPS,Jumlah Detractors,Jumlah Passives,Jumlah Promoters,Compliance,Ganti Tutor,Program\n";
-    const blob = new Blob([header], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "Template_Offline_Teacher.csv";
-    link.click();
-  };
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
+  // Handle Dynamic Upload CSV Lingua
+  const handleUploadLingua = (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const CITY_COORDINATES = {
-          "jakarta": { lat: -6.2088, lng: 106.8456 },
-          "bekasi": { lat: -6.2415, lng: 106.9924 },
-          "tangerang": { lat: -6.1702, lng: 106.6403 },
-          "depok": { lat: -6.4025, lng: 106.7942 },
-          "bogor": { lat: -6.5971, lng: 106.7900 },
-          "bandung": { lat: -6.9175, lng: 107.6191 },
-          "surabaya": { lat: -7.2504, lng: 112.7688 },
-          "yogyakarta": { lat: -7.7956, lng: 110.3695 },
-          "medan": { lat: 3.5800, lng: 98.6700 },
-          "makassar": { lat: -5.1477, lng: 119.4327 },
-          "denpasar": { lat: -8.6500, lng: 115.2167 },
-          "semarang": { lat: -6.9667, lng: 110.4167 },
-          "balikpapan": { lat: -1.2379, lng: 116.8529 },
-          "palembang": { lat: -2.9909, lng: 104.7566 },
-          "default": { lat: -2.5489, lng: 118.0149 }
+        const csvText = Papa.unparse(results.data);
+        const parsed = parseTutorsFromCSV(csvText, "Lingua");
+        setLinguaData(parsed);
+        alert(`Berhasil mengunggah ${parsed.length} data tutor Lingua dari CSV!`);
+      },
+      error: (err) => {
+        alert("Gagal membaca file CSV Lingua: " + err.message);
+      }
+    });
+    e.target.value = "";
+  };
+
+  // Handle Dynamic Upload CSV Intertest
+  const handleUploadIntertest = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const csvText = Papa.unparse(results.data);
+        const parsed = parseTutorsFromCSV(csvText, "Intertest");
+        setIntertestData(parsed);
+        alert(`Berhasil mengunggah ${parsed.length} data tutor Intertest dari CSV!`);
+      },
+      error: (err) => {
+        alert("Gagal membaca file CSV Intertest: " + err.message);
+      }
+    });
+    e.target.value = "";
+  };
+
+  // Combined tutor list
+  const allTutorRecords = useMemo(() => {
+    return [...linguaData, ...intertestData];
+  }, [linguaData, intertestData]);
+
+  // List of unique regionals
+  const regionalOptions = useMemo(() => {
+    const set = new Set();
+    allTutorRecords.forEach(r => {
+      if (r.regional) set.add(r.regional);
+    });
+    return Array.from(set).sort();
+  }, [allTutorRecords]);
+
+  // Check if search matches exist globally across all regionals
+  const globalSearchMatches = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return allTutorRecords.filter(item => {
+      if (selectedProgram !== "All" && item.program !== selectedProgram) return false;
+      const matchName = item.tutorName.toLowerCase().includes(q);
+      const matchBranch = item.uniqueName.toLowerCase().includes(q) || item.branchName.toLowerCase().includes(q);
+      const matchRegional = item.regional.toLowerCase().includes(q);
+      const matchAddress = item.address.toLowerCase().includes(q);
+      return matchName || matchBranch || matchRegional || matchAddress;
+    });
+  }, [allTutorRecords, selectedProgram, searchQuery]);
+
+  // Filtered tutors based on current active filters
+  const filteredTutors = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+
+    return allTutorRecords.filter(item => {
+      if (selectedProgram !== "All" && item.program !== selectedProgram) return false;
+      if (selectedRegional !== "All" && item.regional !== selectedRegional) return false;
+      
+      if (q !== "") {
+        const matchName = item.tutorName.toLowerCase().includes(q);
+        const matchBranch = item.uniqueName.toLowerCase().includes(q) || item.branchName.toLowerCase().includes(q);
+        const matchRegional = item.regional.toLowerCase().includes(q);
+        const matchAddress = item.address.toLowerCase().includes(q);
+        if (!matchName && !matchBranch && !matchRegional && !matchAddress) return false;
+      }
+      return true;
+    });
+  }, [allTutorRecords, selectedProgram, selectedRegional, searchQuery]);
+
+  // Group filtered data by branch for Map markers
+  const branchMapGroups = useMemo(() => {
+    const map = {};
+
+    filteredTutors.forEach(item => {
+      const key = `${item.uniqueName}-${item.regional}`;
+      if (!map[key]) {
+        map[key] = {
+          key,
+          uniqueName: item.uniqueName,
+          branchName: item.branchName,
+          regional: item.regional,
+          academy: item.academy,
+          address: item.address,
+          origLat: item.lat,
+          origLng: item.lng,
+          lat: item.lat,
+          lng: item.lng,
+          linguaTutors: [],
+          intertestTutors: []
         };
-        const parsed = results.data;
-        const newTeachers = [];
-        parsed.forEach((row, idx) => {
-          try {
-            const name = String(row["Nama Tutor"] || "").trim();
-            const kota = String(row["Kota"] || "").trim();
-            const p = String(row["Program"] || "Lingua").trim();
-            if (!name || !kota) throw new Error("Nama Tutor atau Kota kosong");
-
-            const coords = CITY_COORDINATES[kota.toLowerCase()] || CITY_COORDINATES["default"];
-
-            let qcRaw = row["Skor QC"];
-            let qc = (qcRaw === null || qcRaw === undefined || String(qcRaw).trim() === "" || Number(qcRaw) === 0) ? null : Number(qcRaw);
-
-            const d = Number(row["Jumlah Detractors"]) || 0;
-            const pa = Number(row["Jumlah Passives"]) || 0;
-            const pr = Number(row["Jumlah Promoters"]) || 0;
-            const total = d + pa + pr;
-            let nps = 0;
-            if (total > 0) {
-              const rawNps = ((pr - d) / total) * 100;
-              nps = Math.round((rawNps + 100) / 2);
-            }
-
-            const comp = Number(row["Compliance"]) || 0;
-            const ganti = Number(row["Ganti Tutor"]) || 0;
-
-            newTeachers.push({
-              id: (Date.now() + idx).toString(),
-              name,
-              kota,
-              lat: coords.lat,
-              lng: coords.lng,
-              program: p,
-              qc,
-              nps,
-              compliance: comp,
-              gantiTutor: ganti,
-              hasInspection: false,
-              inspection: null,
-              availability: "Moderate",
-              identifier: "Baru",
-              availabilitySlots: []
-            });
-          } catch(err) {
-            console.error(`Error row ${idx + 2}: ${err.message}`);
-          }
-        });
-        if (newTeachers.length > 0) {
-          (async () => {
-            try {
-              const teachersRef = collection(db, "teachers");
-              const batches = [];
-              let currentBatch = writeBatch(db);
-              let opCount = 0;
-
-              newTeachers.forEach(teacher => {
-                const docRef = doc(teachersRef, teacher.id.toString());
-                currentBatch.set(docRef, teacher);
-                opCount++;
-
-                if (opCount === 500) {
-                  batches.push(currentBatch.commit());
-                  currentBatch = writeBatch(db);
-                  opCount = 0;
-                }
-              });
-              if (opCount > 0) batches.push(currentBatch.commit());
-
-              await Promise.all(batches);
-              alert(`Berhasil import ${newTeachers.length} teacher offline/hybrid.`);
-            } catch (e) {
-              console.error("Import error", e);
-              alert("Gagal import: " + e.message);
-            }
-          })();
+      }
+      if (item.program === "Lingua") {
+        if (!map[key].linguaTutors.includes(item.tutorName)) {
+          map[key].linguaTutors.push(item.tutorName);
+        }
+      } else if (item.program === "Intertest") {
+        if (!map[key].intertestTutors.includes(item.tutorName)) {
+          map[key].intertestTutors.push(item.tutorName);
         }
       }
     });
-    e.target.value = null;
-  };
+
+    const groups = Object.values(map);
+
+    // Apply Radial Spiderfy Offset for overlapping branch markers in same area!
+    const locationMap = {};
+    groups.forEach(b => {
+      const locKey = `${b.origLat.toFixed(3)},${b.origLng.toFixed(3)}`;
+      if (!locationMap[locKey]) locationMap[locKey] = [];
+      locationMap[locKey].push(b);
+    });
+
+    const spiderfied = [];
+    Object.values(locationMap).forEach(group => {
+      if (group.length === 1) {
+        spiderfied.push(group[0]);
+      } else {
+        const radiusOffset = 0.015; // visual spread offset
+        group.forEach((item, index) => {
+          const angle = (index / group.length) * 2 * Math.PI;
+          spiderfied.push({
+            ...item,
+            lat: item.origLat + radiusOffset * Math.sin(angle),
+            lng: item.origLng + radiusOffset * Math.cos(angle),
+            isOffset: true
+          });
+        });
+      }
+    });
+
+    return spiderfied;
+  }, [filteredTutors]);
+
+  // City Level Cluster Aggregation when Zoomed Out (selectedRegional === 'All' and map level)
+  const cityClusterGroups = useMemo(() => {
+    const map = {};
+    branchMapGroups.forEach(b => {
+      const reg = b.regional || "Lainnya";
+      if (!map[reg]) {
+        map[reg] = {
+          regional: reg,
+          branchCount: 0,
+          latSum: 0,
+          lngSum: 0,
+          linguaCount: 0,
+          intertestCount: 0,
+          branches: []
+        };
+      }
+      map[reg].branchCount += 1;
+      map[reg].latSum += b.origLat;
+      map[reg].lngSum += b.origLng;
+      map[reg].linguaCount += b.linguaTutors.length;
+      map[reg].intertestCount += b.intertestTutors.length;
+      map[reg].branches.push(b);
+    });
+
+    return Object.values(map).map(c => ({
+      ...c,
+      lat: c.latSum / c.branchCount,
+      lng: c.lngSum / c.branchCount,
+      totalTutors: c.linguaCount + c.intertestCount
+    }));
+  }, [branchMapGroups]);
+
+  // Group branches by Regional for Sidebar View
+  const regionalSidebarGroups = useMemo(() => {
+    const map = {};
+    branchMapGroups.forEach(b => {
+      const reg = b.regional || "Lainnya";
+      if (!map[reg]) {
+        map[reg] = {
+          regional: reg,
+          branches: [],
+          totalLingua: 0,
+          totalIntertest: 0,
+          totalTutors: 0
+        };
+      }
+      map[reg].branches.push(b);
+      map[reg].totalLingua += b.linguaTutors.length;
+      map[reg].totalIntertest += b.intertestTutors.length;
+      map[reg].totalTutors += (b.linguaTutors.length + b.intertestTutors.length);
+    });
+
+    return Object.values(map).sort((a, b) => b.totalTutors - a.totalTutors);
+  }, [branchMapGroups]);
+
+  // Summary stats
+  const summaryStats = useMemo(() => {
+    const totalTutors = filteredTutors.length;
+    const linguaCount = filteredTutors.filter(t => t.program === "Lingua").length;
+    const intertestCount = filteredTutors.filter(t => t.program === "Intertest").length;
+    const totalBranches = branchMapGroups.length;
+
+    return { totalTutors, linguaCount, intertestCount, totalBranches };
+  }, [filteredTutors, branchMapGroups]);
+
+  // Target coordinates & zoom for active branch selection
+  const activeBranch = useMemo(() => {
+    if (!selectedBranchKey) return null;
+    return branchMapGroups.find(b => b.key === selectedBranchKey);
+  }, [selectedBranchKey, branchMapGroups]);
+
+  const mapCenter = useMemo(() => {
+    if (activeBranch && !isNaN(activeBranch.lat) && !isNaN(activeBranch.lng)) {
+      return [activeBranch.lat, activeBranch.lng];
+    }
+    if (selectedRegional !== "All") {
+      const regBranches = branchMapGroups.filter(b => b.regional === selectedRegional);
+      if (regBranches.length > 0 && !isNaN(regBranches[0].lat) && !isNaN(regBranches[0].lng)) {
+        return [regBranches[0].lat, regBranches[0].lng];
+      }
+    }
+    if (branchMapGroups.length > 0 && !isNaN(branchMapGroups[0].lat) && !isNaN(branchMapGroups[0].lng)) {
+      return [branchMapGroups[0].lat, branchMapGroups[0].lng];
+    }
+    return [-2.5, 118]; // Default Indonesia view
+  }, [activeBranch, selectedRegional, branchMapGroups]);
+
+  const mapZoom = useMemo(() => {
+    if (activeBranch) return 13;
+    if (selectedRegional !== "All" && branchMapGroups.length > 0) return 10;
+    return 5;
+  }, [activeBranch, selectedRegional, branchMapGroups]);
+
+  // Check if regional filter is blocking search results
+  const showGlobalSearchSuggestion = useMemo(() => {
+    return (
+      searchQuery.trim() !== "" &&
+      selectedRegional !== "All" &&
+      filteredTutors.length === 0 &&
+      globalSearchMatches.length > 0
+    );
+  }, [searchQuery, selectedRegional, filteredTutors, globalSearchMatches]);
 
   return (
-    <div>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+    <div style={{ paddingBottom: 40, fontFamily: "Inter, -apple-system, BlinkMacSystemFont, sans-serif" }}>
+      {/* Header Bar */}
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Offline & Hybrid Teachers</h1>
-          <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Geographic distribution & status tracking</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0, letterSpacing: "-0.02em" }}>
+            Offline BAC & EAC Tutor Mapping
+          </h1>
+          <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>
+            Visualisasi sebaran tutor Lingua & Intertest seluruh cabang dengan Split-View Panel & Overlap Resolution
+          </p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+
+        {/* Action Buttons */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button disabled={isResetting} onClick={handleResetData} style={{
             background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
-            padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: isResetting ? 0.6 : 1
-          }}>{isResetting ? "Memproses..." : "Perbarui Data"}</button>
+            padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", opacity: isResetting ? 0.6 : 1
+          }}>
+            {isResetting ? "Memproses..." : "🗑 Perbarui Data"}
+          </button>
+
           <button onClick={downloadTemplate} style={{
             background: "#F1F5F9", color: "#475569", border: "1.5px solid #E2E8F0", borderRadius: 10,
-            padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
-          }}>Template CSV</button>
-          
-          <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
-          <button onClick={() => fileInputRef.current?.click()} style={{
-            background: "#10B981", color: "#FFF", border: "none", borderRadius: 10,
-            padding: "11px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
-          }}>Import CSV</button>
+            padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>
+            📥 Template CSV
+          </button>
+
+          <input
+            type="file"
+            accept=".csv"
+            ref={fileInputLinguaRef}
+            onChange={handleUploadLingua}
+            style={{ display: "none" }}
+          />
+          <button
+            onClick={() => fileInputLinguaRef.current?.click()}
+            style={{
+              background: "linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: 10,
+              padding: "10px 18px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(79, 70, 229, 0.25)"
+            }}
+          >
+            <span>📤</span> Upload CSV Lingua
+          </button>
+
+          <input
+            type="file"
+            accept=".csv"
+            ref={fileInputIntertestRef}
+            onChange={handleUploadIntertest}
+            style={{ display: "none" }}
+          />
+          <button
+            onClick={() => fileInputIntertestRef.current?.click()}
+            style={{
+              background: "linear-gradient(135deg, #9333EA 0%, #7E22CE 100%)",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: 10,
+              padding: "10px 18px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: "0 4px 12px rgba(147, 51, 234, 0.25)"
+            }}
+          >
+            <span>📤</span> Upload CSV Intertest
+          </button>
         </div>
       </div>
 
-      <div style={{ marginBottom: 24 }}>
-        {/* Map Container */}
-        <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, position: "relative", overflow: "hidden", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
-          {/* Header Map */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid #F1F5F9", background: "#FFFFFF", zIndex: 20, position: "relative" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.05em" }}>Peta Sebaran</span>
-              {selectedCity !== "All" && (
-                <button onClick={() => setSelectedCity("All")} style={{ padding: "4px 10px", borderRadius: 6, background: "#FEF2F2", color: "#B91C1C", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                  Reset Filter: {selectedCity} ✖
-                </button>
-              )}
-            </div>
+      {errorMsg && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13 }}>
+          ⚠️ {errorMsg}
+        </div>
+      )}
+
+      {/* KPI Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
+        <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 4px rgba(0,0,0,0.03)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Total Cabang Aktif</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "#0F172A" }}>{summaryStats.totalBranches}</div>
+          <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Dengan Tutor Terdaftar</div>
+        </div>
+
+        <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 14, padding: "16px 20px", boxShadow: "0 2px 4px rgba(0,0,0,0.03)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#4F46E5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Total Tutor Displayed</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "#4F46E5" }}>{summaryStats.totalTutors}</div>
+          <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Jumlah Keseluruhan</div>
+        </div>
+
+        <div
+          onClick={() => setSelectedProgram(selectedProgram === "Lingua" ? "All" : "Lingua")}
+          style={{
+            background: selectedProgram === "Lingua" ? "#EEF2FF" : "#FFFFFF",
+            border: `1.5px solid ${selectedProgram === "Lingua" ? "#6366F1" : "#E2E8F0"}`,
+            borderRadius: 14,
+            padding: "16px 20px",
+            cursor: "pointer",
+            transition: "all 0.18s",
+            boxShadow: selectedProgram === "Lingua" ? "0 0 0 3px rgba(99, 102, 241, 0.15)" : "0 2px 4px rgba(0,0,0,0.03)"
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#4F46E5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Tutor Lingua</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "#312E81" }}>{summaryStats.linguaCount}</div>
+          <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>{selectedProgram === "Lingua" ? "✓ Filter Active" : "Klik untuk filter Lingua"}</div>
+        </div>
+
+        <div
+          onClick={() => setSelectedProgram(selectedProgram === "Intertest" ? "All" : "Intertest")}
+          style={{
+            background: selectedProgram === "Intertest" ? "#F3E8FF" : "#FFFFFF",
+            border: `1.5px solid ${selectedProgram === "Intertest" ? "#A855F7" : "#E2E8F0"}`,
+            borderRadius: 14,
+            padding: "16px 20px",
+            cursor: "pointer",
+            transition: "all 0.18s",
+            boxShadow: selectedProgram === "Intertest" ? "0 0 0 3px rgba(168, 85, 247, 0.15)" : "0 2px 4px rgba(0,0,0,0.03)"
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#9333EA", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Tutor Intertest</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "#581C87" }}>{summaryStats.intertestCount}</div>
+          <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>{selectedProgram === "Intertest" ? "✓ Filter Active" : "Klik untuk filter Intertest"}</div>
+        </div>
+      </div>
+
+      {/* Interactive Filter Control Panel */}
+      <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "16px 20px", marginBottom: 20, boxShadow: "0 2px 6px rgba(0,0,0,0.04)" }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
             
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#64748B" }}>Filter Kota:</span>
-              <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)}
-                      style={{ padding: "8px 14px", border: "1.5px solid #E2E8F0", borderRadius: 8, fontSize: 13, outline: "none", background: "#F8FAFC", fontWeight: 600, color: "#0F172A", minWidth: 160, cursor: "pointer" }}>
-                <option value="All">Semua Kota</option>
-                {Array.from(new Set(teachers.map(t => t.kota))).map(city => (
-                  <option key={city} value={city}>{city}</option>
+            {/* Filter Program Dropdown */}
+            <div style={{ minWidth: 150 }}>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#64748B", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Program</label>
+              <select
+                value={selectedProgram}
+                onChange={e => setSelectedProgram(e.target.value)}
+                style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 9, fontSize: 13, background: "#F8FAFC", fontWeight: 600, color: "#0F172A", cursor: "pointer", outline: "none" }}
+              >
+                <option value="All">Semua Program</option>
+                <option value="Lingua">Lingua Only</option>
+                <option value="Intertest">Intertest Only</option>
+              </select>
+            </div>
+
+            {/* Filter Regional Dropdown */}
+            <div style={{ minWidth: 180 }}>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#64748B", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Regional / Kota</label>
+              <select
+                value={selectedRegional}
+                onChange={e => {
+                  setSelectedRegional(e.target.value);
+                  setSelectedBranchKey(null);
+                  setExpandedRegional(e.target.value !== "All" ? e.target.value : null);
+                }}
+                style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 9, fontSize: 13, background: "#F8FAFC", fontWeight: 600, color: "#0F172A", cursor: "pointer", outline: "none" }}
+              >
+                <option value="All">Semua Regional ({regionalOptions.length})</option>
+                {regionalOptions.map(r => (
+                  <option key={r} value={r}>{r}</option>
                 ))}
               </select>
             </div>
-          </div>
-          
-          <div style={{ position: "relative", width: "100%", height: 520, borderRadius: 16, overflow: "hidden" }}>
-            {/* Legend as overlay */}
-            <div style={{ position: "absolute", bottom: 20, right: 20, zIndex: 1000, background: "rgba(255, 255, 255, 0.9)", backdropFilter: "blur(4px)", padding: "12px 16px", borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Legend</div>
-              {["Top Performer", "Eligible", "Watch", "Perlu Review"].map(s => (
-                <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: STATUS_CONFIG[s].dot }} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>{s}</span>
-                </div>
-              ))}
-            </div>
 
-            <MapContainer 
-              center={[-2.5, 118]} 
-              zoom={5} 
-              minZoom={4} 
-              maxZoom={12} 
-              maxBounds={[[-12, 94], [7, 142]]} 
-              scrollWheelZoom={true} 
-              style={{ width: "100%", height: "100%", background: "#E5E7EB" }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
-                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-              />
-              
-              {cityGroups.map((city, i) => {
-                const isSelected = selectedCity === city.kota;
-                const opacity = selectedCity === "All" || isSelected ? 1 : 0.4;
-                const color = STATUS_CONFIG[city.bestStatus]?.dot || "#6366F1";
-                const isCluster = city.teachers.length > 1;
-                const radius = isCluster ? Math.min(14 + (city.teachers.length * 0.5), 20) : 9;
-                const strokeW = isCluster ? 2 : 2.5;
-                
-                const markerHtml = `
-                  <div style="
-                    background-color: ${color};
-                    width: ${radius * 2}px;
-                    height: ${radius * 2}px;
-                    border-radius: 50%;
-                    border: ${strokeW}px solid #FFFFFF;
-                    box-shadow: 0px 3px 6px rgba(0,0,0,0.3);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    opacity: ${opacity};
-                    ${isSelected ? 'transform: scale(1.15); box-shadow: 0px 0px 0px 4px ' + color + '66;' : ''}
-                    transition: all 0.2s;
-                  ">
-                    ${isCluster ? `<span style="color: #FFFFFF; font-family: Inter; font-size: 11px; font-weight: 800;">${city.teachers.length}</span>` : ''}
-                  </div>
-                `;
-
-                const customIcon = L.divIcon({
-                  html: markerHtml,
-                  className: "custom-leaflet-marker",
-                  iconSize: [radius * 2, radius * 2],
-                  iconAnchor: [radius, radius],
-                });
-
-                return (
-                  <Marker 
-                    key={i} 
-                    position={[city.lat, city.lng]} 
-                    icon={customIcon}
-                    eventHandlers={{
-                      click: () => setSelectedCity(city.kota)
+            {/* Search Input Box with Icon & Quick Clear */}
+            <div style={{ flex: 1, minWidth: 240, position: "relative" }}>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#64748B", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Pencarian Tutor / Cabang
+              </label>
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <span style={{ position: "absolute", left: 12, fontSize: 14, color: "#94A3B8" }}>🔍</span>
+                <input
+                  type="text"
+                  placeholder="Ketik nama tutor, nama cabang, atau alamat..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 36px 9px 36px",
+                    border: searchQuery ? "1.5px solid #6366F1" : "1.5px solid #E2E8F0",
+                    borderRadius: 9,
+                    fontSize: 13,
+                    outline: "none",
+                    boxSizing: "border-box",
+                    background: searchQuery ? "#FAF5FF" : "#FFFFFF",
+                    transition: "all 0.15s"
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      background: "#E2E8F0",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: 18,
+                      height: 18,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      color: "#475569",
+                      cursor: "pointer"
                     }}
                   >
-                    <Tooltip direction="top" offset={[0, -radius]} opacity={1}>
-                      <span style={{ fontFamily: "Inter", fontWeight: 700, fontSize: 12 }}>{city.kota}</span>
-                    </Tooltip>
-                    <Popup>
-                       <div style={{ padding: "4px", minWidth: 160, fontFamily: "Inter" }}>
-                         <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", marginBottom: 8, textTransform: "uppercase" }}>{city.kota}</div>
-                         <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 12 }}>{city.teachers.length} Teachers</div>
-                         {["Top Performer", "Eligible", "Watch", "Perlu Review", "Disqualified"].map(s => {
-                           const count = city.teachers.filter(t => t.status === s || (s === "Disqualified" && t.isDisqualified)).length;
-                           if (count === 0) return null;
-                           return (
-                             <div key={s} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, marginBottom: 4 }}>
-                               <span style={{ color: STATUS_CONFIG[s]?.text }}>{s}</span>
-                               <span style={{ color: "#0F172A" }}>{count}</span>
-                             </div>
-                           )
-                         })}
-                       </div>
-                    </Popup>
-                  </Marker>
-                );
-              })}
-            </MapContainer>
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {/* View Mode Switcher */}
+            <div style={{ background: "#F1F5F9", borderRadius: 10, padding: 3, display: "flex", gap: 2 }}>
+              <button
+                onClick={() => setActiveTab("map")}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  background: activeTab === "map" ? "#FFFFFF" : "transparent",
+                  color: activeTab === "map" ? "#4F46E5" : "#64748B",
+                  boxShadow: activeTab === "map" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+                }}
+              >
+                🗺️ Split Map & Cards
+              </button>
+              <button
+                onClick={() => setActiveTab("table")}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  background: activeTab === "table" ? "#FFFFFF" : "transparent",
+                  color: activeTab === "table" ? "#4F46E5" : "#64748B",
+                  boxShadow: activeTab === "table" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+                }}
+              >
+                📊 Tabel Full
+              </button>
+            </div>
+
+            {(selectedProgram !== "All" || selectedRegional !== "All" || searchQuery !== "" || selectedBranchKey !== null) && (
+              <button
+                onClick={() => {
+                  setSelectedProgram("All");
+                  setSelectedRegional("All");
+                  setSelectedBranchKey(null);
+                  setSearchQuery("");
+                  setExpandedRegional(null);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 9,
+                  background: "#FEF2F2",
+                  color: "#B91C1C",
+                  border: "1px solid #FECACA",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                Reset Filter ✖
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Analytics Container */}
-        <div style={{ marginTop: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 16 }}>
-            COMPOSITE SCORE — {selectedCity === "All" ? "ALL CITIES" : selectedCity.toUpperCase()}
+        {/* Active Filter Chips / Badges */}
+        {(selectedRegional !== "All" || selectedProgram !== "All" || searchQuery !== "") && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #F1F5F9", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>Filter Aktif:</span>
+            {selectedProgram !== "All" && (
+              <span style={{ background: "#EEF2FF", color: "#4F46E5", border: "1px solid #C7D2FE", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                Program: {selectedProgram}
+              </span>
+            )}
+            {selectedRegional !== "All" && (
+              <span style={{ background: "#F0FDF4", color: "#166534", border: "1px solid #BBF7D0", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                Regional: {selectedRegional}
+              </span>
+            )}
+            {searchQuery && (
+              <span style={{ background: "#F3E8FF", color: "#6B21A8", border: "1px solid #E9D5FF", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                Pencarian: "{searchQuery}"
+              </span>
+            )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-             {["Top Performer", "Eligible", "Watch", "Perlu Review"].map(s => (
-               <MetricCard key={s} statusKey={s} count={counts[s]} total={filtered.length}
-                 active={activeMetric === s}
-                 onClick={() => setActiveMetric(activeMetric === s ? null : s)} />
-             ))}
+        )}
+
+        {/* Global Search Suggestion Banner when Regional Filter causes 0 results */}
+        {showGlobalSearchSuggestion && (
+          <div style={{ marginTop: 12, background: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ fontSize: 12, color: "#1E40AF" }}>
+              💡 Tidak ditemukan hasil untuk <b>"{searchQuery}"</b> di regional <b>{selectedRegional}</b>. Namun ditemukan <b>{globalSearchMatches.length} tutor/cabang</b> di regional lain!
+            </div>
+            <button
+              onClick={() => setSelectedRegional("All")}
+              style={{
+                background: "#2563EB",
+                color: "#FFFFFF",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap"
+              }}
+            >
+              Cari di Semua Regional 🔍
+            </button>
           </div>
-        </div>
-      </div>
-
-
-
-      {/* Table */}
-      <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 900 }}>
-          <thead>
-            <tr style={{ background: "#F8FAFC", borderBottom: "1.5px solid #E2E8F0" }}>
-              {["Rank", "Nama Teacher", "Kota", "Program", "Availability", "QC", "NPS", "Inspection", "Compliance", "Penalty", "Final Score", "Status", ""].map(h => (
-                <th key={h} style={{ padding: "12px 16px", textAlign: h === "Final Score" || h === "Rank" ? "center" : "left", fontWeight: 700, fontSize: 11, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((t, i) => (
-              <tr key={t.id} id={`row-${t.id}`} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>{t.rank === "—" ? "—" : `#${t.rank}`}</td>
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ fontWeight: 600, color: "#0F172A" }}>{t.name}</div>
-                  {(t.gantiTutor === 1 || t.gantiTutor === 2) && (
-                    <div style={{ fontSize: 10, color: "#B45309", fontWeight: 600, marginTop: 2 }}>⚠ Flagged</div>
-                  )}
-                </td>
-                <td style={{ padding: "14px 16px", fontWeight: 600, color: "#475569" }}>{t.kota}</td>
-                <td style={{ padding: "14px 16px" }}>
-                  <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 600 }}>{t.program}</span>
-                </td>
-                <td style={{ padding: "14px 16px", fontSize: 12, fontWeight: 600, color: t.availability === "Very High" ? "#10B981" : t.availability === "High" ? "#3B82F6" : t.availability === "Moderate" ? "#F59E0B" : t.availability === "Low" ? "#EF4444" : t.availability === "Very Low" ? "#7F1D1D" : "#64748B" }}>
-                  {t.availability || "—"}
-                </td>
-                <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.qc} color="#6366F1" /></td>
-                <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.nps} color="#8B5CF6" /></td>
-                <td style={{ padding: "14px 16px", minWidth: 110 }}>
-                  {t.hasInspection
-                    ? <ScoreBar val={t.inspection || 0} color="#06B6D4" />
-                    : <span style={{ fontSize: 11, background: "#FEF3C7", color: "#92400E", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Belum Diinspeksi</span>
-                  }
-                </td>
-                <td style={{ padding: "14px 16px", minWidth: 100 }}><ScoreBar val={t.compliance} color="#10B981" /></td>
-                <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                  {(() => {
-                    const c = t.gantiTutor;
-                    const bg = c === 0 ? "#F1F5F9" : c === 1 ? "#FEF3C7" : c === 2 ? "#FFEDD5" : "#FEF2F2";
-                    const text = c === 0 ? "#64748B" : c === 1 ? "#D97706" : c === 2 ? "#EA580C" : "#DC2626";
-                    return (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <span style={{ background: bg, color: text, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{c}/3</span>
-                        {c === 1 || c === 2 ? <span style={{ color: "#C2410C", fontWeight: 700, fontSize: 11 }}>−10</span> : null}
-                      </div>
-                    )
-                  })()}
-                </td>
-                <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                  {t.isDisqualified ? (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                      <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>0</span>
-                      <span style={{ fontSize: 10, background: "#FEF2F2", color: "#B91C1C", padding: "3px 6px", borderRadius: 4, fontWeight: 600, marginTop: 4, whiteSpace: "nowrap" }}>Excluded: {t.disqualifiedReason}</span>
-                    </div>
-                  ) : (
-                    <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(t.score.final) }}>{t.score.final}</span>
-                  )}
-                </td>
-                <td style={{ padding: "14px 16px" }}><StatusBadge status={t.status} small /></td>
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => setDrill({ teacher: t, score: t.score })} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E0E7FF", background: "#EEF2FF", color: "#4F46E5", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Detail</button>
-                    <button onClick={() => setEditing(t)} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E2E8F0", background: "#F8FAFC", color: "#475569", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>Edit</button>
-                    <button onClick={() => removeTeacher(t.id)} style={{ padding: "5px 9px", borderRadius: 7, border: "1.5px solid #FECACA", background: "#FEF2F2", color: "#B91C1C", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>×</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <div style={{ padding: "24px", textAlign: "center", color: "#94A3B8", fontSize: 13, fontWeight: 600 }}>Tidak ada data teacher untuk kriteria ini.</div>
         )}
       </div>
 
-      {drill && (
-        <DrillDown teacher={drill.teacher} score={drill.score} onClose={() => setDrill(null)} 
-          onDisqualify={(id, reason) => {
-            updateTeacher({ ...drill.teacher, isDisqualified: true, disqualifiedReason: reason, disqualifiedAt: new Date().toISOString() });
-            setDrill(null);
-          }}
-          gToken={gToken} setGToken={setGToken}
-        />
-      )}
-      {editing && <EditModal teacher={editing} onSave={updateTeacher} onClose={() => setEditing(null)} />}
+      {/* Main Split-View Content Area */}
+      {activeTab === "map" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, alignItems: "stretch" }}>
+          
+          {/* Left Panel: Leaflet Map View */}
+          <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid #F1F5F9", background: "#FFFFFF" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.05em" }}>Peta Sebaran Cabang</span>
+                <span style={{ fontSize: 11, background: "#EEF2FF", color: "#4F46E5", padding: "3px 10px", borderRadius: 12, fontWeight: 700 }}>
+                  {branchMapGroups.length} Cabang Tampil
+                </span>
+              </div>
 
+              <div style={{ display: "flex", gap: 10, fontSize: 11, fontWeight: 600 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#4F46E5" }} />
+                  <span>Lingua</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#9333EA" }} />
+                  <span>Intertest</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#059669" }} />
+                  <span>Both</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ position: "relative", width: "100%", height: 620, flex: 1 }}>
+              {loading ? (
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#F8FAFC", color: "#64748B", fontSize: 14, fontWeight: 600 }}>
+                  ⏳ Memuat peta dan data tutor...
+                </div>
+              ) : (
+                <MapContainer
+                  center={mapCenter}
+                  zoom={mapZoom}
+                  minZoom={4}
+                  maxZoom={16}
+                  scrollWheelZoom={true}
+                  style={{ width: "100%", height: "100%", background: "#E5E7EB" }}
+                >
+                  <MapRecenter center={mapCenter} zoom={mapZoom} />
+                  <TileLayer
+                    attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
+                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  />
+
+                  {/* Render Cluster Pins on City Level or Branch Markers */}
+                  {selectedRegional === "All" && searchQuery === "" ? (
+                    /* Group pins by Regional City to avoid messy collisions when zoomed out */
+                    cityClusterGroups.map((c) => {
+                      const isSelected = expandedRegional === c.regional;
+                      const radius = Math.min(16 + c.branchCount * 1.8, 28);
+
+                      const markerHtml = `
+                        <div style="
+                          background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+                          width: ${radius * 2}px;
+                          height: ${radius * 2}px;
+                          border-radius: 50%;
+                          border: ${isSelected ? '3.5px solid #FEF08A' : '3px solid #FFFFFF'};
+                          box-shadow: ${isSelected ? '0px 0px 0px 6px rgba(124, 58, 237, 0.45), 0px 6px 14px rgba(0,0,0,0.35)' : '0px 4px 10px rgba(0,0,0,0.3)'};
+                          display: flex;
+                          flex-direction: column;
+                          align-items: center;
+                          justify-content: center;
+                          color: #FFFFFF;
+                          font-family: Inter, sans-serif;
+                          transition: all 0.2s;
+                        ">
+                          <span style="font-size: ${c.branchCount > 9 ? '11px' : '12px'}; font-weight: 800; line-height: 1;">${c.branchCount}</span>
+                          <span style="font-size: 8px; font-weight: 700; opacity: 0.9; text-transform: uppercase;">Cabang</span>
+                        </div>
+                      `;
+
+                      const customIcon = L.divIcon({
+                        html: markerHtml,
+                        className: "custom-city-cluster-marker",
+                        iconSize: [radius * 2, radius * 2],
+                        iconAnchor: [radius, radius]
+                      });
+
+                      return (
+                        <Marker
+                          key={c.regional}
+                          position={[c.lat, c.lng]}
+                          icon={customIcon}
+                          eventHandlers={{
+                            click: () => {
+                              setSelectedRegional(c.regional);
+                              setExpandedRegional(c.regional);
+                            }
+                          }}
+                        >
+                          <Tooltip direction="top" offset={[0, -radius]} opacity={1}>
+                            <div style={{ fontWeight: 800, fontSize: 13 }}>📍 {c.regional}</div>
+                            <div style={{ fontSize: 11, color: "#475569" }}>{c.branchCount} Cabang · {c.totalTutors} Tutor</div>
+                            <div style={{ fontSize: 10, color: "#4F46E5", fontWeight: 700, marginTop: 2 }}>Klik untuk zoom & lihat cabang</div>
+                          </Tooltip>
+                        </Marker>
+                      );
+                    })
+                  ) : (
+                    /* Display Individual Branch Markers with Spiderfy Offset */
+                    branchMapGroups.map((b) => {
+                      const totalTutorsAtBranch = b.linguaTutors.length + b.intertestTutors.length;
+                      const hasLingua = b.linguaTutors.length > 0;
+                      const hasIntertest = b.intertestTutors.length > 0;
+                      const isSelected = selectedBranchKey === b.key;
+
+                      let markerBg = "#059669"; // both
+                      if (hasLingua && !hasIntertest) markerBg = "#4F46E5";
+                      if (hasIntertest && !hasLingua) markerBg = "#9333EA";
+
+                      const baseRadius = Math.min(13 + totalTutorsAtBranch * 1.5, 22);
+                      const radius = isSelected ? baseRadius + 4 : baseRadius;
+
+                      const markerHtml = `
+                        <div style="
+                          background-color: ${markerBg};
+                          width: ${radius * 2}px;
+                          height: ${radius * 2}px;
+                          border-radius: 50%;
+                          border: ${isSelected ? '3.5px solid #FEF08A' : '2.5px solid #FFFFFF'};
+                          box-shadow: ${isSelected ? '0px 0px 0px 6px rgba(79, 70, 229, 0.45), 0px 6px 12px rgba(0,0,0,0.4)' : '0px 3px 8px rgba(0,0,0,0.3)'};
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          color: #FFFFFF;
+                          font-family: Inter, sans-serif;
+                          font-size: ${isSelected ? '12px' : '11px'};
+                          font-weight: 800;
+                          transition: all 0.2s;
+                          transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
+                        ">
+                          ${totalTutorsAtBranch}
+                        </div>
+                      `;
+
+                      const customIcon = L.divIcon({
+                        html: markerHtml,
+                        className: "custom-branch-marker",
+                        iconSize: [radius * 2, radius * 2],
+                        iconAnchor: [radius, radius]
+                      });
+
+                      return (
+                        <Marker
+                          key={b.key}
+                          position={[b.lat, b.lng]}
+                          icon={customIcon}
+                          eventHandlers={{
+                            click: () => {
+                              setSelectedBranchKey(b.key);
+                              setExpandedRegional(b.regional);
+                            }
+                          }}
+                        >
+                          <Tooltip direction="top" offset={[0, -radius]} opacity={1}>
+                            <div style={{ fontWeight: 700, fontSize: 12 }}>{b.uniqueName}</div>
+                            <div style={{ fontSize: 11, color: "#475569" }}>{b.regional} · {totalTutorsAtBranch} Tutor</div>
+                          </Tooltip>
+
+                          <Popup maxWidth={320}>
+                            <div style={{ padding: "4px", fontFamily: "Inter, sans-serif" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                                <span style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{b.uniqueName}</span>
+                                <span style={{ fontSize: 10, background: "#F1F5F9", color: "#475569", borderRadius: 4, padding: "2px 6px", fontWeight: 700 }}>{b.academy}</span>
+                              </div>
+                              <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8 }}>📍 {b.address || b.branchName}</div>
+
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#F8FAFC", padding: "8px 10px", borderRadius: 8, marginBottom: 12 }}>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "#4F46E5", textTransform: "uppercase" }}>Lingua</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: "#312E81" }}>{b.linguaTutors.length} Tutor</div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 700, color: "#9333EA", textTransform: "uppercase" }}>Intertest</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: "#581C87" }}>{b.intertestTutors.length} Tutor</div>
+                                </div>
+                              </div>
+
+                              {/* List Lingua Tutors */}
+                              {b.linguaTutors.length > 0 && (
+                                <div style={{ marginBottom: 8 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: "#4F46E5", marginBottom: 4 }}>📘 Tutor Lingua:</div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 90, overflowY: "auto" }}>
+                                    {b.linguaTutors.map((name, i) => (
+                                      <span key={i} style={{ background: "#EEF2FF", color: "#3730A3", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{name}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* List Intertest Tutors */}
+                              {b.intertestTutors.length > 0 && (
+                                <div>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: "#9333EA", marginBottom: 4 }}>📕 Tutor Intertest:</div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 90, overflowY: "auto" }}>
+                                    {b.intertestTutors.map((name, i) => (
+                                      <span key={i} style={{ background: "#F3E8FF", color: "#6B21A8", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{name}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })
+                  )}
+                </MapContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Right Panel: Interactive Sidebar List (FIXED FLEX SHRINK BUG) */}
+          <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "hidden", display: "flex", flexDirection: "column", height: 672, boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)" }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid #F1F5F9", background: "#F8FAFC", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#0F172A", textTransform: "uppercase" }}>Daftar Kota & Cabang</div>
+                <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Klik kota untuk buka cabang & fokus peta</div>
+              </div>
+              <span style={{ fontSize: 11, background: "#E0E7FF", color: "#3730A3", fontWeight: 700, padding: "3px 9px", borderRadius: 12 }}>
+                {regionalSidebarGroups.length} Regional
+              </span>
+            </div>
+
+            {/* Scrollable Container with flexShrink: 0 on each child */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              {regionalSidebarGroups.map(regGroup => {
+                const isExpanded = expandedRegional === regGroup.regional || selectedRegional === regGroup.regional || searchQuery.trim() !== "";
+
+                return (
+                  <div
+                    key={regGroup.regional}
+                    style={{
+                      flexShrink: 0, // CRITICAL FIX: prevents card collapsing/squishing bug!
+                      border: "1.5px solid #E2E8F0",
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      background: "#FFFFFF",
+                      boxShadow: isExpanded ? "0 4px 12px rgba(99, 102, 241, 0.08)" : "0 1px 3px rgba(0,0,0,0.02)",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    {/* Collapsible Regional Card Header */}
+                    <div
+                      onClick={() => {
+                        if (expandedRegional === regGroup.regional) {
+                          setExpandedRegional(null);
+                        } else {
+                          setExpandedRegional(regGroup.regional);
+                          setSelectedRegional(regGroup.regional);
+                        }
+                      }}
+                      style={{
+                        padding: "12px 14px",
+                        background: isExpanded ? "#EEF2FF" : "#F8FAFC",
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        borderBottom: isExpanded ? "1px solid #E0E7FF" : "none",
+                        transition: "background 0.15s"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 12, color: "#6366F1" }}>{isExpanded ? "▼" : "▶"}</span>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>📍 {regGroup.regional}</div>
+                          <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>{regGroup.branches.length} Cabang</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {regGroup.totalLingua > 0 && (
+                          <span style={{ fontSize: 10, background: "#EEF2FF", color: "#4F46E5", fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>
+                            {regGroup.totalLingua} L
+                          </span>
+                        )}
+                        {regGroup.totalIntertest > 0 && (
+                          <span style={{ fontSize: 10, background: "#F3E8FF", color: "#9333EA", fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>
+                            {regGroup.totalIntertest} I
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expandable Branch Cards */}
+                    {isExpanded && (
+                      <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, background: "#FAFBFF" }}>
+                        {regGroup.branches.map(b => {
+                          const isSelected = selectedBranchKey === b.key;
+                          const tot = b.linguaTutors.length + b.intertestTutors.length;
+                          return (
+                            <div
+                              key={b.key}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedBranchKey(b.key);
+                                setSelectedRegional(b.regional);
+                              }}
+                              style={{
+                                padding: "10px 12px",
+                                borderRadius: 8,
+                                border: `1.5px solid ${isSelected ? "#6366F1" : "#E2E8F0"}`,
+                                background: isSelected ? "#F5F3FF" : "#FFFFFF",
+                                cursor: "pointer",
+                                transition: "all 0.15s",
+                                boxShadow: isSelected ? "0 2px 8px rgba(99, 102, 241, 0.18)" : "0 1px 2px rgba(0,0,0,0.02)"
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: "#0F172A" }}>{b.uniqueName}</div>
+                                <span style={{ fontSize: 10, fontWeight: 800, background: isSelected ? "#6366F1" : "#E2E8F0", color: isSelected ? "#FFFFFF" : "#475569", padding: "2px 7px", borderRadius: 99 }}>
+                                  {tot} Tutor
+                                </span>
+                              </div>
+
+                              {/* List of Tutors badges */}
+                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {b.linguaTutors.map((t, idx) => (
+                                  <span key={`l-${idx}`} style={{ fontSize: 10, background: "#EEF2FF", color: "#3730A3", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                                    📘 {t}
+                                  </span>
+                                ))}
+                                {b.intertestTutors.map((t, idx) => (
+                                  <span key={`i-${idx}`} style={{ fontSize: 10, background: "#F3E8FF", color: "#6B21A8", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                                    📕 {t}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {regionalSidebarGroups.length === 0 && (
+                <div style={{ padding: "32px 16px", textAlign: "center", color: "#94A3B8" }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>Tidak ada cabang ditemukan</div>
+                  <div style={{ fontSize: 11, marginTop: 4 }}>Coba ubah kriteria pencarian atau klik Reset Filter</div>
+                  {(selectedRegional !== "All" || searchQuery !== "") && (
+                    <button
+                      onClick={() => { setSelectedRegional("All"); setSearchQuery(""); setExpandedRegional(null); }}
+                      style={{ marginTop: 12, background: "#4F46E5", color: "#FFF", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      Reset Filter Pencarian
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      ) : (
+        /* Table View */
+        <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)" }}>
+          <div style={{ padding: "16px 24px", borderBottom: "1px solid #F1F5F9" }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Tabel Detail Tutor Offline</h3>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748B" }}>Menampilkan {filteredTutors.length} data tutor yang aktif mengajar di cabang</p>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#F8FAFC", borderBottom: "1.5px solid #E2E8F0" }}>
+                  <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>#</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Nama Tutor</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Program</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Cabang BAC / EAC</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Regional</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Akademi</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Alamat</th>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Koordinat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTutors.map((item, index) => (
+                  <tr
+                    key={item.id}
+                    style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#94A3B8", fontWeight: 600, fontSize: 12 }}>{index + 1}</td>
+                    <td style={{ padding: "14px 16px", fontWeight: 700, color: "#0F172A" }}>{item.tutorName}</td>
+                    <td style={{ padding: "14px 16px" }}>
+                      <span
+                        style={{
+                          background: item.program === "Lingua" ? "#EEF2FF" : "#F3E8FF",
+                          color: item.program === "Lingua" ? "#3730A3" : "#6B21A8",
+                          border: `1px solid ${item.program === "Lingua" ? "#C7D2FE" : "#E9D5FF"}`,
+                          borderRadius: 6,
+                          padding: "3px 9px",
+                          fontSize: 11,
+                          fontWeight: 700
+                        }}
+                      >
+                        {item.program}
+                      </span>
+                    </td>
+                    <td style={{ padding: "14px 16px", fontWeight: 600, color: "#334155" }}>
+                      {item.uniqueName}
+                      {item.branchName && item.branchName !== item.uniqueName && (
+                        <span style={{ display: "block", fontSize: 11, color: "#94A3B8", fontWeight: 400 }}>{item.branchName}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "14px 16px", color: "#475569", fontWeight: 500 }}>{item.regional || "—"}</td>
+                    <td style={{ padding: "14px 16px", color: "#64748B", fontSize: 12 }}>{item.academy}</td>
+                    <td style={{ padding: "14px 16px", color: "#64748B", fontSize: 12, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.address}>
+                      {item.address || "—"}
+                    </td>
+                    <td style={{ padding: "14px 16px", color: "#94A3B8", fontSize: 11, fontFamily: "monospace" }}>
+                      {item.lat.toFixed(4)}, {item.lng.toFixed(4)}
+                    </td>
+                  </tr>
+                ))}
+
+                {filteredTutors.length === 0 && (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "32px", textAlign: "center", color: "#94A3B8", fontSize: 13, fontWeight: 500 }}>
+                      Tidak ada data tutor yang sesuai dengan kriteria filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

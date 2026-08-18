@@ -3,6 +3,36 @@ import Papa from "papaparse";
 import { importMasterTeachers, deleteAllMasterTeachers } from "./masterTeacherService.js";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
 
+function getSlmsStatus(t) {
+  if (!t) return "";
+  const raw = t.slmsStatus ?? t["SLMS Status"] ?? t["slmsStatus"] ?? t["SLMS STATUS"] ?? t.slms_status ?? t.slms ?? "";
+  return String(raw).trim();
+}
+
+function isVerifiedStatus(t) {
+  const s = getSlmsStatus(t).toLowerCase();
+  if (!s) return false;
+  return s.includes("verify") || s.includes("veri") || s.includes("terverifikasi") || s === "v" || s === "yes" || s === "true" || s === "1";
+}
+
+function getGender(t) {
+  if (!t) return "";
+  const raw = t.gender ?? t["Jenis Kelamin"] ?? t["gender"] ?? t["Gender"] ?? "";
+  return String(raw).trim();
+}
+
+function getEducationLevel(t) {
+  if (!t) return "";
+  const raw = t.educationLevel ?? t["Lastest Education Level"] ?? t["Education Level"] ?? t.educationLevel ?? "";
+  return String(raw).trim();
+}
+
+function getPosisi(t) {
+  if (!t) return "";
+  const raw = t.posisi ?? t["Posisi"] ?? t["posisi"] ?? "";
+  return String(raw).trim();
+}
+
 function getScoreCategory(scoreStr) {
   if (!scoreStr || scoreStr.trim() === "-" || scoreStr.toLowerCase() === "n/a") {
     return "Tidak Ada Skor";
@@ -328,30 +358,69 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
     const posSet = new Set();
     const eduSet = new Set();
     const slmsSet = new Set();
+    const genderSet = new Set();
 
     masterTeachers.forEach(t => {
-      if (t.posisi) posSet.add(t.posisi);
-      if (t.educationLevel) eduSet.add(t.educationLevel);
-      if (t.slmsStatus) slmsSet.add(t.slmsStatus);
+      const p = getPosisi(t);
+      const e = getEducationLevel(t);
+      const s = getSlmsStatus(t);
+      const g = getGender(t);
+      if (p) posSet.add(p);
+      if (e) eduSet.add(e);
+      if (s) slmsSet.add(s);
+      if (g) genderSet.add(g);
     });
 
     return {
       posisi: Array.from(posSet).sort(),
       edu: Array.from(eduSet).sort(),
       slms: Array.from(slmsSet).sort(),
+      gender: Array.from(genderSet).sort(),
     };
   }, [masterTeachers]);
 
-  // Filtered dataset
+  // Filtered dataset with robust flexible matching for SLMS Status & Gender
   const filtered = useMemo(() => {
     return masterTeachers.filter(t => {
-      if (filterPosisi !== "Semua" && t.posisi !== filterPosisi) return false;
-      if (filterEdu !== "Semua" && t.educationLevel !== filterEdu) return false;
-      if (filterSlms !== "Semua" && t.slmsStatus !== filterSlms) return false;
-      if (filterGender !== "Semua" && t.gender !== filterGender) return false;
+      const posVal = getPosisi(t);
+      const eduVal = getEducationLevel(t);
+      const slmsVal = getSlmsStatus(t);
+      const genderVal = getGender(t);
+
+      if (filterPosisi !== "Semua" && posVal.toLowerCase() !== filterPosisi.trim().toLowerCase()) return false;
+      if (filterEdu !== "Semua" && eduVal.toLowerCase() !== filterEdu.trim().toLowerCase()) return false;
+
+      // Robust SLMS Status Filter
+      if (filterSlms !== "Semua") {
+        const sVal = slmsVal.toLowerCase();
+        const fVal = filterSlms.trim().toLowerCase();
+        if (fVal === "verified") {
+          if (!isVerifiedStatus(t)) return false;
+        } else if (fVal.includes("unverified") || fVal.includes("belum")) {
+          if (isVerifiedStatus(t)) return false;
+        } else {
+          if (sVal !== fVal && !sVal.includes(fVal) && !fVal.includes(sVal)) return false;
+        }
+      }
+
+      // Robust Gender Filter
+      if (filterGender !== "Semua") {
+        const gVal = genderVal.toLowerCase();
+        const fVal = filterGender.trim().toLowerCase();
+
+        if (fVal === "perempuan") {
+          const isFemale = gVal.includes("perempuan") || gVal.includes("wanita") || gVal.includes("female") || gVal === "f" || gVal === "p";
+          if (!isFemale) return false;
+        } else if (fVal === "laki-laki" || fVal === "laki laki" || fVal === "pria" || fVal === "laki") {
+          const isMale = gVal.includes("laki") || gVal.includes("pria") || gVal.includes("male") || gVal === "m" || gVal === "l";
+          if (!isMale) return false;
+        } else {
+          if (gVal !== fVal && !gVal.includes(fVal)) return false;
+        }
+      }
 
       if (filterScore !== "Semua") {
-        const cat = getScoreCategory(t.overallScore);
+        const cat = getScoreCategory(t.overallScore || t["Overall Score(Eng Test)"]);
         if (filterScore === "Lainnya / Tanpa Skor") {
           if (cat !== "Lainnya" && cat !== "Tidak Ada Skor") return false;
         } else {
@@ -360,12 +429,12 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
       }
 
       if (search) {
-        const q = search.toLowerCase();
+        const q = search.toLowerCase().trim();
         const matchName = t.name?.toLowerCase().includes(q);
         const matchEmail = t.email?.toLowerCase().includes(q);
-        const matchLms = t.lmsName?.toLowerCase().includes(q);
+        const matchLms = (t.lmsName || t["LMS NAME"])?.toLowerCase().includes(q);
         const matchUniv = t.univS1?.toLowerCase().includes(q) || t.univS2?.toLowerCase().includes(q);
-        const matchPos = t.posisi?.toLowerCase().includes(q);
+        const matchPos = posVal.toLowerCase().includes(q);
         if (!matchName && !matchEmail && !matchLms && !matchUniv && !matchPos) return false;
       }
 
@@ -386,16 +455,35 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
     setCurrentPage(1);
   };
 
-  // Metrics summary
-  const metrics = useMemo(() => {
-    const verifiedCount = masterTeachers.filter(t => t.slmsStatus === "Verified").length;
-    const mastersCount = masterTeachers.filter(t => t.educationLevel?.includes("Master")).length;
-    const bachelorsCount = masterTeachers.filter(t => t.educationLevel?.includes("Bachelor")).length;
-    const maleCount = masterTeachers.filter(t => t.gender === "Laki-Laki").length;
-    const femaleCount = masterTeachers.filter(t => t.gender === "Perempuan").length;
+  const handleResetFilters = () => {
+    setSearch("");
+    setFilterPosisi("Semua");
+    setFilterEdu("Semua");
+    setFilterSlms("Semua");
+    setFilterGender("Semua");
+    setFilterScore("Semua");
+    setCurrentPage(1);
+  };
 
-    return { verifiedCount, mastersCount, bachelorsCount, maleCount, femaleCount };
-  }, [masterTeachers]);
+  const isFilterActive = search !== "" || filterPosisi !== "Semua" || filterEdu !== "Semua" || filterSlms !== "Semua" || filterGender !== "Semua" || filterScore !== "Semua";
+
+  // Dynamic metrics summary
+  const metrics = useMemo(() => {
+    const totalVerifiedCount = masterTeachers.filter(t => isVerifiedStatus(t)).length;
+    const verifiedCount = filtered.filter(t => isVerifiedStatus(t)).length;
+    const mastersCount = filtered.filter(t => getEducationLevel(t).includes("Master")).length;
+    const bachelorsCount = filtered.filter(t => getEducationLevel(t).includes("Bachelor")).length;
+    const maleCount = filtered.filter(t => {
+      const g = getGender(t).toLowerCase();
+      return g.includes("laki") || g.includes("pria") || g.includes("male") || g === "m" || g === "l";
+    }).length;
+    const femaleCount = filtered.filter(t => {
+      const g = getGender(t).toLowerCase();
+      return g.includes("perempuan") || g.includes("wanita") || g.includes("female") || g === "f" || g === "p";
+    }).length;
+
+    return { verifiedCount, totalVerifiedCount, mastersCount, bachelorsCount, maleCount, femaleCount };
+  }, [filtered, masterTeachers]);
 
   return (
     <div>
@@ -432,41 +520,56 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
         </div>
       </div>
 
-      {/* Metrics Summary Cards */}
+      {/* Metrics Summary Cards (Dynamic based on active filter) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
         <div style={{ background: "#FFF", border: "1.5px solid #E2E8F0", borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Master Tutor</div>
-          <div style={{ fontSize: 30, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{masterTeachers.length}</div>
-          <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>Tercatat di Firestore</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{filtered.length}</div>
+          <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+            {isFilterActive ? `Terfilter dari ${masterTeachers.length} total` : "Tercatat di Firestore"}
+          </div>
         </div>
 
         <div style={{ background: "#FFF", border: "1.5px solid #BBF7D0", borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: "0.06em" }}>SLMS Verified</div>
-          <div style={{ fontSize: 30, fontWeight: 800, color: "#15803D", marginTop: 4 }}>{metrics.verifiedCount}</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: "#15803D", marginTop: 4 }}>
+            {filterSlms !== "Semua" ? metrics.verifiedCount : metrics.totalVerifiedCount}
+          </div>
           <div style={{ fontSize: 12, color: "#16A34A", marginTop: 4 }}>
-            {masterTeachers.length ? Math.round((metrics.verifiedCount / masterTeachers.length) * 100) : 0}% of total
+            {masterTeachers.length ? Math.round(((filterSlms !== "Semua" ? metrics.verifiedCount : metrics.totalVerifiedCount) / masterTeachers.length) * 100) : 0}% of total
           </div>
         </div>
 
         <div style={{ background: "#FFF", border: "1.5px solid #C7D2FE", borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#4F46E5", textTransform: "uppercase", letterSpacing: "0.06em" }}>Pendidikan S2 / Master</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", textTransform: "uppercase", letterSpacing: "0.06em" }}>Pendidikan S2 / Master</div>
           <div style={{ fontSize: 30, fontWeight: 800, color: "#3730A3", marginTop: 4 }}>{metrics.mastersCount}</div>
           <div style={{ fontSize: 12, color: "#6366F1", marginTop: 4 }}>{metrics.bachelorsCount} degree S1 (Bachelor)</div>
         </div>
 
         <div style={{ background: "#FFF", border: "1.5px solid #E2E8F0", borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>Gender Rasio</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", marginTop: 8 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>
             👩 {metrics.femaleCount} <span style={{ fontSize: 13, color: "#94A3B8", fontWeight: 500 }}>vs</span> 👨 {metrics.maleCount}
           </div>
-          <div style={{ fontSize: 12, color: "#64748B", marginTop: 6 }}>Perempuan vs Laki-Laki</div>
+          <div style={{ fontSize: 12, color: "#64748B", marginTop: 6 }}>Perempuan vs Laki-Laki ({filtered.length})</div>
         </div>
       </div>
 
       {/* Multi-Category Filters */}
       <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14 }}>
-          🔍 Filter & Pencarian Master Data
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            🔍 Filter & Pencarian Master Data
+          </div>
+          {isFilterActive && (
+            <button onClick={handleResetFilters} style={{
+              background: "#EEF2FF", color: "#4F46E5", border: "1.5px solid #C7D2FE", borderRadius: 8,
+              padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
+              display: "flex", alignItems: "center", gap: 5
+            }}>
+              🔄 Reset Filter
+            </button>
+          )}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
@@ -506,7 +609,9 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
             <select value={filterSlms} onChange={e => handleFilterChange(setFilterSlms, e.target.value)}
               style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
               <option value="Semua">Semua SLMS Status</option>
-              {filterOptions.slms.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="Verified">Verified</option>
+              <option value="Unverified">Unverified</option>
+              {filterOptions.slms.filter(s => s !== "Verified" && s !== "Unverified").map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 
@@ -516,8 +621,9 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
             <select value={filterGender} onChange={e => handleFilterChange(setFilterGender, e.target.value)}
               style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
               <option value="Semua">Semua Jenis Kelamin</option>
-              <option value="Laki-Laki">Laki-Laki</option>
               <option value="Perempuan">Perempuan</option>
+              <option value="Laki-Laki">Laki-Laki</option>
+              {filterOptions.gender.filter(g => !["perempuan", "laki-laki", "laki - laki"].includes(g.toLowerCase())).map(g => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
 

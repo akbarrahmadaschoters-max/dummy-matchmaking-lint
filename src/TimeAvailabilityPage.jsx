@@ -49,7 +49,7 @@ function CalculationDetailModal({ tutor, percentiles, onClose }) {
         <div style={{ padding: "20px 24px", borderBottom: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <span style={{ fontSize: 11, fontWeight: 700, background: "#EEF2FF", color: "#4F46E5", padding: "3px 8px", borderRadius: 6, textTransform: "uppercase" }}>
-              Analisis Time Availability
+              Analisis Time Availability ({tutor.type || "Program"})
             </span>
             <div style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", marginTop: 6 }}>{tutor.name}</div>
           </div>
@@ -90,7 +90,7 @@ function CalculationDetailModal({ tutor, percentiles, onClose }) {
           {/* Scale / Percentile Position */}
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
-              Posisi di Antara Batas Persentil
+              Posisi di Antara Batas Persentil ({tutor.type || "Semua"})
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {/* Visual Scale Bar */}
@@ -184,6 +184,53 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     return () => unsub();
   }, []);
 
+  // Auto-load default CSV if timeAvailabilityData has fewer records than full dataset (359 rows)
+  useEffect(() => {
+    if (!timeAvailabilityData || timeAvailabilityData.length < 300) {
+      fetch("/csv/Time Availability.csv")
+        .then(res => res.text())
+        .then(csvText => {
+          Papa.parse(csvText, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              const records = [];
+              results.data.forEach((row, idx) => {
+                const name = (row["Nama Tutor"] || row["Name"] || "").trim();
+                if (!name) return;
+                const type = (row["Tutor Type"] || "").trim() || "N/A";
+                if (type.toUpperCase() === "SAA") return; // Skip SAA tutors
+
+                const mar = Number(row["March 2026"]) || 0;
+                const apr = Number(row["April 2026"]) || 0;
+                const may = Number(row["May 2026"]) || 0;
+                const jun = Number(row["June 2026"]) || 0;
+                const avgVal = row["Average"];
+                const avg = avgVal ? Number(avgVal) : (mar + apr + may + jun) / 4;
+
+                records.push({
+                  id: `ta-default-${idx}-${name.replace(/\s+/g, '_')}`,
+                  name,
+                  type,
+                  march: mar,
+                  april: apr,
+                  may: may,
+                  june: jun,
+                  total: mar + apr + may + jun,
+                  average: avg
+                });
+              });
+
+              if (records.length > 0 && setTimeAvailabilityData) {
+                setTimeAvailabilityData(records);
+              }
+            }
+          });
+        })
+        .catch(err => console.error("Error auto-loading Time Availability CSV:", err));
+    }
+  }, [timeAvailabilityData, setTimeAvailabilityData]);
+
   // Template CSV Download
   const downloadTemplate = () => {
     const header = "Nama Tutor,Tutor Type,March 2026,April 2026,May 2026,June 2026\n";
@@ -213,6 +260,8 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
             if (!name) return;
 
             const type = String(row["Tutor Type"] || "").trim();
+            if (type.toUpperCase() === "SAA") return; // Skip SAA tutors
+
             const mar = Number(row["March 2026"]) || 0;
             const apr = Number(row["April 2026"]) || 0;
             const may = Number(row["May 2026"]) || 0;
@@ -305,7 +354,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
       teachersList.forEach(t => {
         const match = classifiedData.find(avail => avail.name.toLowerCase().trim() === t.name.toLowerCase().trim());
         if (match) {
-          const mappedAvailability = match.class5.replace(" Availability", ""); // "Very High", "High", "Moderate", "Low", "Very Low"
+          const mappedAvailability = match.class5.replace(" Availability", "");
           const docRef = doc(db, "teachers", t.id);
 
           batch.update(docRef, {
@@ -371,9 +420,27 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     }
   };
 
-  // 1. Calculate Dynamic Percentiles based on Average sessions
+  // Dynamic filter options
+  const filterOptions = useMemo(() => {
+    const typeSet = new Set();
+    timeAvailabilityData.forEach(t => {
+      if (t.type && t.type !== "N/A" && t.type.toUpperCase() !== "SAA") typeSet.add(t.type);
+    });
+    return Array.from(typeSet).sort();
+  }, [timeAvailabilityData]);
+
+  // 1. Program-filtered dataset (Intertest, Lingua, or Semua - Excludes SAA completely)
+  const programFilteredData = useMemo(() => {
+    return timeAvailabilityData.filter(t => {
+      if (t.type && t.type.toUpperCase() === "SAA") return false;
+      if (filterType !== "Semua" && t.type !== filterType) return false;
+      return true;
+    });
+  }, [timeAvailabilityData, filterType]);
+
+  // 2. Dynamic percentiles based on active program dataset
   const percentiles = useMemo(() => {
-    const averages = timeAvailabilityData.map(t => Number(t.average) || 0);
+    const averages = programFilteredData.map(t => Number(t.average) || 0);
     if (averages.length === 0) {
       return { p20: 0, p40: 0, p60: 0, p80: 0 };
     }
@@ -383,15 +450,14 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
       p60: getPercentile(averages, 60),
       p80: getPercentile(averages, 80)
     };
-  }, [timeAvailabilityData]);
+  }, [programFilteredData]);
 
-  // 2. Classify tutors dynamically based on calculated percentiles
+  // 3. Classify tutors dynamically based on calculated percentiles for the active program
   const classifiedData = useMemo(() => {
-    return timeAvailabilityData.map(t => {
+    return programFilteredData.map(t => {
       const avg = Number(t.average) || 0;
       let class5 = "Very High Availability";
 
-      // 5 Categories: Lower average sessions -> Higher availability
       if (avg <= percentiles.p20) {
         class5 = "Very High Availability";
       } else if (avg <= percentiles.p40) {
@@ -406,31 +472,21 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
 
       return { ...t, class5 };
     });
-  }, [timeAvailabilityData, percentiles]);
+  }, [programFilteredData, percentiles]);
 
-  // Dynamic filter options
-  const filterOptions = useMemo(() => {
-    const typeSet = new Set();
-    classifiedData.forEach(t => {
-      if (t.type) typeSet.add(t.type);
-    });
-    return Array.from(typeSet).sort();
-  }, [classifiedData]);
-
-  // Filtered dataset
+  // 4. Further filter dataset by Availability Category (class5) and Search Query
   const filtered = useMemo(() => {
     return classifiedData.filter(t => {
-      if (filterType !== "Semua" && t.type !== filterType) return false;
       if (filterClass5 !== "Semua" && t.class5 !== filterClass5) return false;
 
-      if (search) {
-        const q = search.toLowerCase();
+      if (search.trim()) {
+        const q = search.toLowerCase().trim();
         if (!t.name?.toLowerCase().includes(q)) return false;
       }
 
       return true;
-    }).sort((a, b) => a.average - b.average); // Sort by average sessions asc (lowest sessions / highest availability first)
-  }, [classifiedData, filterType, filterClass5, search]);
+    }).sort((a, b) => a.average - b.average); // Sort by average sessions asc
+  }, [classifiedData, filterClass5, search]);
 
   // Pagination calculation
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
@@ -444,7 +500,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     setCurrentPage(1);
   };
 
-  // Metrics summary
+  // Metrics summary based on program-classified dataset
   const metrics = useMemo(() => {
     const counts5 = {
       "Very High Availability": 0,
@@ -477,7 +533,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
   }, [metrics]);
 
   return (
-    <div>
+    <div style={{ fontFamily: "Inter, sans-serif" }}>
       {/* Page Title & Actions Header */}
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
         <div>
@@ -527,13 +583,19 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </button>
         </div>
       </div>
-      {/* Row 1: Percentile Info Bar & Detailed Explanations */}
+
+      {/* Percentile Info Bar & Explanations */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 20, marginBottom: 20 }}>
         
         {/* Dynamic Percentile Value Summary */}
         <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
-            📐 Nilai Batas Persentil Dinamis (Rata-rata Sesi)
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              📐 Nilai Batas Persentil Dinamis ({filterType === "Semua" ? "Seluruh Program" : filterType})
+            </div>
+            <span style={{ fontSize: 11, background: "#EEF2FF", color: "#4F46E5", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>
+              {classifiedData.length} Tutor
+            </span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
             {[
@@ -550,7 +612,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
             ))}
           </div>
           <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 10, fontStyle: "italic" }}>
-            * Batas persentil dihitung secara dinamis berdasarkan data sesi rata-rata seluruh tutor yang diunggah.
+            * Batas persentil dihitung secara dinamis berdasarkan data sesi rata-rata tutor program {filterType}.
           </div>
         </div>
 
@@ -577,10 +639,15 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
 
       </div>
 
-      {/* Row 2: Large Visual Analytics (Pie & Bar Charts) */}
+      {/* Visual Analytics (Pie & Bar Charts) */}
       <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 20 }}>
-          📊 Analisis Visual Distribusi Ketersediaan Waktu Tutor
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            📊 Analisis Visual Distribusi Ketersediaan Waktu Tutor ({filterType === "Semua" ? "Seluruh Program" : filterType})
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#4F46E5", background: "#EEF2FF", padding: "3px 10px", borderRadius: 8 }}>
+            Total: {classifiedData.length} Tutor
+          </span>
         </div>
         
         {classifiedData.length === 0 ? (
@@ -592,7 +659,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
             {/* Left Side: Large Pie Chart & Legend */}
             <div style={{ background: "#F8FAFC", border: "1px solid #F1F5F9", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 16, textAlign: "center" }}>
-                🟢 Persentase Distribusi Ketersediaan
+                🟢 Persentase Distribusi Ketersediaan ({filterType})
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flex: 1, gap: 16, flexWrap: "wrap" }}>
                 <div style={{ width: 160, height: 160, margin: "0 auto" }}>
@@ -636,7 +703,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
             {/* Right Side: Bar Chart Comparison */}
             <div style={{ background: "#F8FAFC", border: "1px solid #F1F5F9", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 16, textAlign: "center" }}>
-                📊 Perbandingan Jumlah Tutor per Kategori
+                📊 Perbandingan Jumlah Tutor per Kategori ({filterType})
               </div>
               <div style={{ width: "100%", height: 160 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -675,14 +742,17 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           {/* Tutor Type Filter */}
           <select value={filterType} onChange={e => handleFilterChange(setFilterType, e.target.value)}
             style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
-            <option value="Semua">Semua Tutor Type ({filterOptions.length})</option>
-            {filterOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="Semua">Semua Program ({timeAvailabilityData.length} Tutor)</option>
+            {filterOptions.map(t => {
+              const count = timeAvailabilityData.filter(x => x.type === t).length;
+              return <option key={t} value={t}>{t} ({count} Tutor)</option>;
+            })}
           </select>
 
           {/* Availability Category Filter */}
           <select value={filterClass5} onChange={e => handleFilterChange(setFilterClass5, e.target.value)}
             style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: 13, outline: "none", background: "#FFF", cursor: "pointer", boxSizing: "border-box" }}>
-            <option value="Semua">Semua Availability</option>
+            <option value="Semua">Semua Availability ({classifiedData.length})</option>
             <option value="Very High Availability">Very High Availability (Sesi Sedikit)</option>
             <option value="High Availability">High Availability</option>
             <option value="Moderate">Moderate Availability</option>
@@ -724,7 +794,7 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                🌡️ Availability Heatmap Grid
+                🌡️ Availability Heatmap Grid ({filtered.length} Tutor Tampil)
               </div>
               <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
                 Setiap kotak mewakili seorang tutor. Warna menunjukkan tingkat availability. Klik kotak untuk melihat detail perhitungan.
@@ -804,98 +874,71 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           </div>
         </div>
 
-        {/* No local Filter Toolbar here anymore as it is moved globally above */}
-
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1000 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#F8FAFC", borderBottom: "1.5px solid #E2E8F0" }}>
-                {["#", "Nama Tutor", "Tutor Type", "March", "April", "May", "June", "Grand Total", "Average Sesi", "Classification", "Action"].map(h => (
-                  <th key={h} style={{ padding: "12px 16px", textAlign: h === "#" || h === "Average Sesi" || h.includes("Classification") || h === "Grand Total" || h === "Action" ? "center" : "left", fontWeight: 700, fontSize: 11, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
-                ))}
+                <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Nama Tutor</th>
+                <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Type</th>
+                <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Maret</th>
+                <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>April</th>
+                <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Mei</th>
+                <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Juni</th>
+                <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Rata-rata</th>
+                <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Kategori Availability</th>
+                <th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "#64748B", textTransform: "uppercase" }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {paginatedData.length === 0 ? (
-                <tr>
-                  <td colSpan={11} style={{ padding: "48px 20px", textAlign: "center", color: "#94A3B8" }}>
-                    Tidak ada data tutor yang cocok dengan kriteria pencarian.
-                  </td>
-                </tr>
-              ) : (
-                paginatedData.map((t, i) => {
-                  const globalRank = (currentPage - 1) * pageSize + i + 1;
-                  const c5 = CATEGORY_5_CONFIG[t.class5] || { label: t.class5, bg: "#FFF", border: "#E2E8F0", text: "#0F172A" };
-
-                  return (
-                    <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.15s" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 700, color: "#94A3B8", fontSize: 12 }}>#{globalRank}</td>
-                      <td style={{ padding: "14px 16px", fontWeight: 700, color: "#0F172A" }}>{t.name}</td>
-                      <td style={{ padding: "14px 16px" }}>
-                        <span style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
-                          {t.type || "N/A"}
-                        </span>
-                      </td>
-                      <td style={{ padding: "14px 16px", color: "#475569" }}>{t.march}</td>
-                      <td style={{ padding: "14px 16px", color: "#475569" }}>{t.april}</td>
-                      <td style={{ padding: "14px 16px", color: "#475569" }}>{t.may}</td>
-                      <td style={{ padding: "14px 16px", color: "#475569" }}>{t.june}</td>
-                      <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 600, color: "#334155" }}>{t.total}</td>
-                      <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 800, color: "#4F46E5" }}>{t.average.toFixed(2)}</td>
-                      <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                        <span style={{
-                          background: c5.bg,
-                          color: c5.text,
-                          border: `1px solid ${c5.border}`,
-                          borderRadius: 6, padding: "3px 9px", fontSize: 11, fontWeight: 700,
-                          display: "inline-block", minWidth: 155
-                        }}>
-                          {c5.label} Availability
-                        </span>
-                      </td>
-                      <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                        <button onClick={() => setSelectedTutor(t)} style={{
-                          padding: "5px 12px", borderRadius: 8, border: "1.5px solid #C7D2FE",
-                          background: "#EEF2FF", color: "#4F46E5", fontWeight: 700, cursor: "pointer", fontSize: 12
-                        }}>
-                          Detail
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+              {paginatedData.map(t => {
+                const c = CATEGORY_5_CONFIG[t.class5] || { label: t.class5, bg: "#F8FAFC", text: "#475569", border: "#E2E8F0" };
+                return (
+                  <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", transition: "background 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#FAFBFF"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <td style={{ padding: "14px 16px", fontWeight: 700, color: "#0F172A" }}>{t.name}</td>
+                    <td style={{ padding: "14px 16px", color: "#64748B", fontWeight: 600 }}>{t.type}</td>
+                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#475569" }}>{t.march}</td>
+                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#475569" }}>{t.april}</td>
+                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#475569" }}>{t.may}</td>
+                    <td style={{ padding: "14px 16px", textAlign: "center", color: "#475569" }}>{t.june}</td>
+                    <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 800, color: "#4F46E5" }}>{t.average.toFixed(2)}</td>
+                    <td style={{ padding: "14px 16px" }}>
+                      <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, borderRadius: 6, padding: "3px 9px", fontSize: 11, fontWeight: 700 }}>
+                        {c.label}
+                      </span>
+                    </td>
+                    <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                      <button onClick={() => setSelectedTutor(t)} style={{ padding: "5px 11px", borderRadius: 7, border: "1.5px solid #E0E7FF", background: "#EEF2FF", color: "#4F46E5", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>
+                        Detail
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div style={{ padding: "16px 24px", borderTop: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontSize: 12, color: "#64748B" }}>
-              Halaman <span style={{ fontWeight: 700, color: "#0F172A" }}>{currentPage}</span> dari <span style={{ fontWeight: 700, color: "#0F172A" }}>{totalPages}</span>
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))} style={{
-                padding: "6px 14px", borderRadius: 8, border: "1px solid #E2E8F0", background: currentPage === 1 ? "#F8FAFC" : "#FFF",
-                color: currentPage === 1 ? "#CBD5E1" : "#475569", fontWeight: 600, cursor: currentPage === 1 ? "not-allowed" : "pointer", fontSize: 12
-              }}>
-                ◄ Prev
-              </button>
-              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} style={{
-                padding: "6px 14px", borderRadius: 8, border: "1px solid #E2E8F0", background: currentPage === totalPages ? "#F8FAFC" : "#FFF",
-                color: currentPage === totalPages ? "#CBD5E1" : "#475569", fontWeight: 600, cursor: currentPage === totalPages ? "not-allowed" : "pointer", fontSize: 12
-              }}>
-                Next ►
-              </button>
-            </div>
+        {/* Pagination Bar */}
+        <div style={{ padding: "16px 24px", background: "#F8FAFC", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 12, color: "#64748B" }}>
+            Halaman {currentPage} dari {totalPages}
           </div>
-        )}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+              style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #CBD5E1", background: "#FFF", fontSize: 12, fontWeight: 600, cursor: currentPage === 1 ? "not-allowed" : "pointer" }}>
+              ← Prev
+            </button>
+            <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+              style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #CBD5E1", background: "#FFF", fontSize: 12, fontWeight: 600, cursor: currentPage === totalPages ? "not-allowed" : "pointer" }}>
+              Next →
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Tutor Detail Calculation Modal */}
+      {/* Detail Modal */}
       {selectedTutor && (
         <CalculationDetailModal tutor={selectedTutor} percentiles={percentiles} onClose={() => setSelectedTutor(null)} />
       )}

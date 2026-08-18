@@ -8,10 +8,10 @@ export function calcScore(t) {
   }
 
   let activeWeights = {
-    qc: (t.qc !== null && t.qc > 0) ? 0.35 : 0,
-    nps: (t.nps !== null && t.nps > 0) ? 0.30 : 0,
-    ins: (t.hasInspection && t.inspection !== null) ? 0.20 : 0,
-    comp: (t.compliance !== null && t.compliance > 0) ? 0.15 : 0,
+    qc: (t.qc !== null && t.qc !== undefined && Number(t.qc) > 0) ? 0.35 : 0,
+    nps: (t.nps !== null && t.nps !== undefined && Number(t.nps) > 0) ? 0.30 : 0,
+    ins: (t.hasInspection && t.inspection !== null && t.inspection !== undefined && Number(t.inspection) > 0) ? 0.20 : 0,
+    comp: (t.compliance !== null && t.compliance !== undefined && Number(t.compliance) > 0) ? 0.15 : 0,
   };
 
   let sumW = activeWeights.qc + activeWeights.nps + activeWeights.ins + activeWeights.comp;

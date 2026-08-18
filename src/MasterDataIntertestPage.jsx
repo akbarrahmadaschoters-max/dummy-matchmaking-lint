@@ -323,21 +323,34 @@ export default function MasterDataIntertestPage({ masterIntertestTeachers = [], 
     setCurrentPage(1);
   };
 
-  // Metrics summary
+  const handleResetFilters = () => {
+    setSearch("");
+    setFilterStatusIntertest("Semua");
+    setFilterPosisi("Semua");
+    setFilterKota("Semua");
+    setFilterProgram("Semua");
+    setCurrentPage(1);
+  };
+
+  const isFilterActive = search !== "" || filterStatusIntertest !== "Semua" || filterPosisi !== "Semua" || filterKota !== "Semua" || filterProgram !== "Semua";
+
+  // Dynamic metrics summary based on filtered selection
   const metrics = useMemo(() => {
-    const activeCount = masterIntertestTeachers.filter(t => t.statusIntertest === "Active").length;
-    const totalActiveB2C = masterIntertestTeachers.reduce((acc, t) => acc + (Number(t.kelasAktifB2C) || 0), 0);
-    const totalActiveB2B = masterIntertestTeachers.reduce((acc, t) => acc + (Number(t.kelasAktifB2B) || 0), 0);
+    const activeCount = filtered.filter(t => t.statusIntertest === "Active").length;
+    const totalActiveB2C = filtered.reduce((acc, t) => acc + (Number(t.kelasAktifB2C) || 0), 0);
+    const totalActiveB2B = filtered.reduce((acc, t) => acc + (Number(t.kelasAktifB2B) || 0), 0);
 
     const cityCounts = {};
-    masterIntertestTeachers.forEach(t => {
+    filtered.forEach(t => {
       if (t.kota) cityCounts[t.kota] = (cityCounts[t.kota] || 0) + 1;
     });
 
-    const topCity = Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0] || ["-", 0];
+    const sortedCities = Object.entries(cityCounts).sort((a, b) => b[1] - a[1]);
+    const topCityName = sortedCities[0] ? sortedCities[0][0] : "-";
+    const topCityCount = sortedCities[0] ? sortedCities[0][1] : 0;
 
-    return { activeCount, totalActiveB2C, totalActiveB2B, topCityName: topCity[0], topCityCount: topCity[1] };
-  }, [masterIntertestTeachers]);
+    return { activeCount, totalActiveB2C, totalActiveB2B, topCityName, topCityCount };
+  }, [filtered]);
 
   return (
     <div>
@@ -345,7 +358,7 @@ export default function MasterDataIntertestPage({ masterIntertestTeachers = [], 
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Master Data Tutor Intertest</h1>
-          <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Database mitra Interacademy, subjek diajar, status kelas B2C/B2B & domisili</p>
+          <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Database profil, statistik kelas B2C & B2B, dan domisili tutor Intertest</p>
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -365,28 +378,30 @@ export default function MasterDataIntertestPage({ masterIntertestTeachers = [], 
 
           <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
           <button disabled={isImporting} onClick={() => fileInputRef.current?.click()} style={{
-            background: "#6366F1", color: "#FFF", border: "none", borderRadius: 10,
+            background: "#10B981", color: "#FFF", border: "none", borderRadius: 10,
             padding: "11px 20px", fontSize: 13, fontWeight: 700, cursor: isImporting ? "not-allowed" : "pointer",
-            boxShadow: "0 4px 12px rgba(99,102,241,0.25)"
+            boxShadow: "0 4px 12px rgba(16,185,129,0.25)"
           }}>
             {isImporting ? "⏳ Mengimpor..." : "📤 Upload CSV Data"}
           </button>
         </div>
       </div>
 
-      {/* Metrics Summary Cards */}
+      {/* Metrics Summary Cards (Dynamic based on active filter) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
         <div style={{ background: "#FFF", border: "1.5px solid #E2E8F0", borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Intertest Tutor</div>
-          <div style={{ fontSize: 30, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{masterIntertestTeachers.length}</div>
-          <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>Mitra Interacademy</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Master Intertest</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{filtered.length}</div>
+          <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+            {isFilterActive ? `Terfilter dari ${masterIntertestTeachers.length} total` : "Tercatat di Firestore"}
+          </div>
         </div>
 
         <div style={{ background: "#FFF", border: "1.5px solid #BBF7D0", borderRadius: 14, padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: "0.06em" }}>Status Active</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: "0.06em" }}>Status Intertest Active</div>
           <div style={{ fontSize: 30, fontWeight: 800, color: "#15803D", marginTop: 4 }}>{metrics.activeCount}</div>
           <div style={{ fontSize: 12, color: "#16A34A", marginTop: 4 }}>
-            {masterIntertestTeachers.length ? Math.round((metrics.activeCount / masterIntertestTeachers.length) * 100) : 0}% of total
+            {filtered.length ? Math.round((metrics.activeCount / filtered.length) * 100) : 0}% of selected
           </div>
         </div>
 
@@ -405,8 +420,19 @@ export default function MasterDataIntertestPage({ masterIntertestTeachers = [], 
 
       {/* Multi-Category Filters */}
       <div style={{ background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "20px 24px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14 }}>
-          🔍 Filter & Pencarian Master Data Intertest
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            🔍 Filter & Pencarian Master Data Intertest
+          </div>
+          {isFilterActive && (
+            <button onClick={handleResetFilters} style={{
+              background: "#EEF2FF", color: "#4F46E5", border: "1.5px solid #C7D2FE", borderRadius: 8,
+              padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
+              display: "flex", alignItems: "center", gap: 5
+            }}>
+              🔄 Reset Filter
+            </button>
+          )}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>

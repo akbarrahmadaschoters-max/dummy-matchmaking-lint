@@ -33,11 +33,9 @@ export default function DisqualifiedPage({ teachers, setTeachers }) {
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 24px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>Disqualified Teachers</h1>
-          <p style={{ margin: 0, color: "#64748B", fontSize: 14 }}>Daftar teacher yang didiskualifikasi secara manual oleh operasional.</p>
-        </div>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>Disqualified Teachers</h1>
+        <p style={{ margin: 0, color: "#64748B", fontSize: 14 }}>Daftar teacher yang didiskualifikasi secara manual oleh operasional.</p>
       </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
