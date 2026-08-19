@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import Papa from "papaparse";
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
 import { deleteAllTeachers } from "./teacherService.js";
 
-// Helper component to center map smoothly on selected branch or bounds
+// Helper component to center map smoothly on selected branch
 function MapRecenter({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
@@ -16,6 +16,88 @@ function MapRecenter({ center, zoom }) {
   }, [center, zoom, map]);
   return null;
 }
+
+// Helper component to fit map bounds to active route
+function MapRouteFitter({ routeCoords }) {
+  const map = useMap();
+  useEffect(() => {
+    if (routeCoords && routeCoords.length >= 2) {
+      const bounds = L.latLngBounds(routeCoords);
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+    }
+  }, [routeCoords, map]);
+  return null;
+}
+
+// Calculate straight-line distance (Haversine formula) in kilometers
+const calculateHaversineKm = (lat1, lon1, lat2, lon2) => {
+  if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return 0;
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// Estimate road distance & motor time from Haversine
+const calculateHaversineEstimate = (lat1, lon1, lat2, lon2) => {
+  const straightKm = calculateHaversineKm(lat1, lon1, lat2, lon2);
+  // Urban road factor ~1.25x
+  const roadKm = straightKm * 1.25;
+  // Estimated average motor speed ~25 km/h in urban area
+  const motorMinutes = Math.max(1, Math.round((roadKm / 25) * 60));
+  return {
+    distanceKm: parseFloat(roadKm.toFixed(1)),
+    motorMinutes,
+    straightKm: parseFloat(straightKm.toFixed(1))
+  };
+};
+
+// Fetch real road route geometry & duration from OSRM API with fallback
+const fetchOSRMRoute = async (lat1, lon1, lat2, lon2) => {
+  const fallback = calculateHaversineEstimate(lat1, lon1, lat2, lon2);
+  const fallbackCoords = [[lat1, lon1], [lat2, lon2]];
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) throw new Error(`OSRM API error: ${res.status}`);
+    const data = await res.json();
+
+    if (data.code === "Ok" && data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      const distKm = parseFloat((route.distance / 1000).toFixed(1));
+      // Motorcycle speed factor relative to driving duration (~0.85)
+      const motorMins = Math.max(1, Math.round((route.duration / 60) * 0.85));
+      const coords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+      return {
+        distanceKm: distKm,
+        motorMinutes: motorMins,
+        routeCoords: coords,
+        isOSRM: true
+      };
+    }
+  } catch (err) {
+    console.warn("OSRM routing fallback to Haversine estimate:", err.message);
+  }
+
+  return {
+    distanceKm: fallback.distanceKm,
+    motorMinutes: fallback.motorMinutes,
+    routeCoords: fallbackCoords,
+    isOSRM: false
+  };
+};
 
 const CITY_GEOCODING_FALLBACKS = {
   "jakarta": { lat: -6.2088, lng: 106.8456 },
@@ -107,6 +189,173 @@ const parseTutorsFromCSV = (csvText, programName) => {
   return records;
 };
 
+// Component for individual multi-branch tutor card with real OSRM road distance & motor time
+function TutorCardItem({ mt, tutorSelections, setTutorSelections, branchMapGroups, handleSelectRoute, calculateHaversineEstimate, fetchOSRMRoute }) {
+  const sel = tutorSelections[mt.tutorName] || {
+    originKey: mt.branches[0]?.key,
+    targetKey: mt.branches[1]?.key || mt.branches[0]?.key
+  };
+
+  const curOrigin = mt.branches.find(b => b.key === sel.originKey) || mt.branches[0];
+  const curTarget = mt.branches.find(b => b.key === sel.targetKey) || mt.branches[1] || mt.branches[0];
+
+  const [cardRoute, setCardRoute] = useState(() =>
+    calculateHaversineEstimate(curOrigin.origLat, curOrigin.origLng, curTarget.origLat, curTarget.origLng)
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!curOrigin || !curTarget || curOrigin.key === curTarget.key) {
+      setCardRoute({ distanceKm: 0, motorMinutes: 0, isOSRM: false });
+      return;
+    }
+
+    // Set instant Haversine estimate first
+    const instant = calculateHaversineEstimate(curOrigin.origLat, curOrigin.origLng, curTarget.origLat, curTarget.origLng);
+    setCardRoute(instant);
+
+    // Fetch real OSRM road distance asynchronously
+    fetchOSRMRoute(curOrigin.origLat, curOrigin.origLng, curTarget.origLat, curTarget.origLng).then(res => {
+      if (isMounted && res) {
+        setCardRoute(res);
+      }
+    });
+
+    return () => { isMounted = false; };
+  }, [curOrigin.key, curTarget.key]);
+
+  return (
+    <div
+      style={{
+        flexShrink: 0,
+        border: "1.5px solid #E0E7FF",
+        borderRadius: 12,
+        padding: 12,
+        background: "#FFFFFF",
+        boxShadow: "0 2px 6px rgba(99, 102, 241, 0.06)"
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontWeight: 800, fontSize: 13, color: "#1E1B4B" }}>🧑‍🏫 {mt.tutorName}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, background: "#EEF2FF", color: "#4F46E5", padding: "2px 8px", borderRadius: 99 }}>
+          {mt.branchCount} Cabang
+        </span>
+      </div>
+
+      {/* Interactive Branch List */}
+      <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "8px 10px", marginBottom: 8, fontSize: 11, border: "1px solid #F1F5F9" }}>
+        <div style={{ fontWeight: 700, color: "#475569", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Daftar Cabang ({mt.branches.length}):</span>
+          <span style={{ fontSize: 10, color: "#6366F1" }}>Pilih Asal & Tujuan</span>
+        </div>
+
+        {mt.branches.map((b, bIdx) => {
+          const isAsal = b.key === curOrigin.key;
+          const isTujuan = b.key === curTarget.key;
+
+          return (
+            <div
+              key={bIdx}
+              style={{
+                display: "flex",
+                justify: "space-between",
+                alignItems: "center",
+                padding: "4px 8px",
+                borderRadius: 6,
+                marginBottom: 4,
+                background: isAsal ? "#EEF2FF" : isTujuan ? "#F0FDF4" : "#FFFFFF",
+                border: `1px solid ${isAsal ? "#C7D2FE" : isTujuan ? "#BBF7D0" : "#E2E8F0"}`
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {isAsal && <span style={{ fontSize: 9, background: "#4F46E5", color: "#FFF", borderRadius: 4, padding: "1px 5px", fontWeight: 800 }}>ASAL</span>}
+                {isTujuan && <span style={{ fontSize: 9, background: "#166534", color: "#FFF", borderRadius: 4, padding: "1px 5px", fontWeight: 800 }}>TUJUAN</span>}
+                <span style={{ color: "#0F172A", fontWeight: 600, fontSize: 11 }}>{b.uniqueName}</span>
+              </div>
+
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                {!isAsal && (
+                  <button
+                    onClick={() => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: b.key, targetKey: curTarget.key } }))}
+                    style={{ background: "#E0E7FF", color: "#3730A3", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Set Asal
+                  </button>
+                )}
+                {!isTujuan && (
+                  <button
+                    onClick={() => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: curOrigin.key, targetKey: b.key } }))}
+                    style={{ background: "#DCFCE7", color: "#166534", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Set Tujuan
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Interactive Dropdowns */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8, paddingTop: 8, borderTop: "1px dashed #CBD5E1" }}>
+          <div>
+            <label style={{ fontSize: 9, fontWeight: 800, color: "#4F46E5", textTransform: "uppercase", display: "block", marginBottom: 2 }}>📍 Dari (Asal):</label>
+            <select
+              value={curOrigin.key}
+              onChange={(e) => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: e.target.value, targetKey: curTarget.key } }))}
+              style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", fontWeight: 600, cursor: "pointer" }}
+            >
+              {mt.branches.map(b => (
+                <option key={b.key} value={b.key}>{b.uniqueName}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 9, fontWeight: 800, color: "#166534", textTransform: "uppercase", display: "block", marginBottom: 2 }}>🏁 Ke (Tujuan):</label>
+            <select
+              value={curTarget.key}
+              onChange={(e) => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: curOrigin.key, targetKey: e.target.value } }))}
+              style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", fontWeight: 600, cursor: "pointer" }}
+            >
+              {mt.branches.map(b => (
+                <option key={b.key} value={b.key}>{b.uniqueName}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Route distance & action button */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px dashed #E2E8F0" }}>
+        <div style={{ fontSize: 11, color: "#64748B" }}>
+          📏 <b>{cardRoute.distanceKm} km</b> · 🛵 <b>~{cardRoute.motorMinutes} m</b>
+          {cardRoute.isOSRM && <span style={{ color: "#059669", marginLeft: 4, fontWeight: 700 }} title="Rute Jalan Riil OSRM">✓</span>}
+        </div>
+        <button
+          onClick={() => {
+            const b1 = branchMapGroups.find(x => x.key === curOrigin.key) || curOrigin;
+            const b2 = branchMapGroups.find(x => x.key === curTarget.key) || curTarget;
+            handleSelectRoute(b1, b2);
+          }}
+          disabled={curOrigin.key === curTarget.key}
+          style={{
+            background: curOrigin.key === curTarget.key ? "#CBD5E1" : "linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)",
+            color: "#FFFFFF",
+            border: "none",
+            borderRadius: 6,
+            padding: "6px 12px",
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: curOrigin.key === curTarget.key ? "not-allowed" : "pointer"
+          }}
+        >
+          🗺️ Lihat Rute
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function OfflinePage() {
   const [linguaData, setLinguaData] = useState([]);
   const [intertestData, setIntertestData] = useState([]);
@@ -121,6 +370,43 @@ export default function OfflinePage() {
   const [activeTab, setActiveTab] = useState("map"); // 'map' or 'table'
   const [expandedRegional, setExpandedRegional] = useState(null);
   const [isResetting, setIsResetting] = useState(false);
+
+  // Route & Distance Calculation State
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [sidebarTab, setSidebarTab] = useState("branches"); // 'branches' or 'multiTutors'
+  const [tutorSelections, setTutorSelections] = useState({}); // { [tutorName]: { originKey, targetKey } }
+
+  // Trigger route selection between two branches
+  const handleSelectRoute = async (origin, target) => {
+    if (!origin || !target || origin.key === target.key) return;
+
+    // 1. Instantly set Haversine estimate fallback while fetching OSRM
+    const instantEst = calculateHaversineEstimate(origin.origLat, origin.origLng, target.origLat, target.origLng);
+    const fallbackCoords = [[origin.origLat, origin.origLng], [target.origLat, target.origLng]];
+
+    setSelectedRoute({
+      origin,
+      target,
+      distanceKm: instantEst.distanceKm,
+      motorMinutes: instantEst.motorMinutes,
+      routeCoords: fallbackCoords,
+      isLoading: true,
+      isOSRM: false
+    });
+
+    // 2. Fetch OSRM real road geometry in background
+    const osrmResult = await fetchOSRMRoute(origin.origLat, origin.origLng, target.origLat, target.origLng);
+
+    setSelectedRoute({
+      origin,
+      target,
+      distanceKm: osrmResult.distanceKm,
+      motorMinutes: osrmResult.motorMinutes,
+      routeCoords: osrmResult.routeCoords,
+      isLoading: false,
+      isOSRM: osrmResult.isOSRM
+    });
+  };
 
   // Download Template CSV Offline
   const downloadTemplate = () => {
@@ -401,6 +687,65 @@ export default function OfflinePage() {
 
     return Object.values(map).sort((a, b) => b.totalTutors - a.totalTutors);
   }, [branchMapGroups]);
+
+  // Identify tutors assigned to multiple branches
+  const multiBranchTutors = useMemo(() => {
+    const tutorMap = {};
+
+    allTutorRecords.forEach(record => {
+      const name = record.tutorName.trim();
+      if (!name) return;
+      if (!tutorMap[name]) tutorMap[name] = new Map();
+      const bKey = `${record.uniqueName}-${record.regional}`;
+      if (!tutorMap[name].has(bKey)) {
+        tutorMap[name].set(bKey, {
+          uniqueName: record.uniqueName,
+          regional: record.regional,
+          program: record.program,
+          origLat: record.lat,
+          origLng: record.lng,
+          key: bKey
+        });
+      }
+    });
+
+    const results = [];
+    Object.entries(tutorMap).forEach(([tutorName, branchEntries]) => {
+      if (branchEntries.size >= 2) {
+        const branches = Array.from(branchEntries.values());
+        const b1 = branches[0];
+        const b2 = branches[1];
+        const est = calculateHaversineEstimate(b1.origLat, b1.origLng, b2.origLat, b2.origLng);
+
+        results.push({
+          tutorName,
+          branches,
+          branchCount: branches.length,
+          distKm: est.distanceKm,
+          motorMinutes: est.motorMinutes
+        });
+      }
+    });
+
+    return results.sort((a, b) => b.branchCount - a.branchCount || a.distKm - b.distKm);
+  }, [allTutorRecords]);
+
+  // Helper to calculate top N nearest branches for a given branch
+  const getNearestBranches = (sourceBranch, limit = 5) => {
+    if (!sourceBranch || !branchMapGroups) return [];
+    return branchMapGroups
+      .filter(b => b.key !== sourceBranch.key)
+      .map(b => {
+        const est = calculateHaversineEstimate(sourceBranch.origLat, sourceBranch.origLng, b.origLat, b.origLng);
+        return {
+          ...b,
+          distKm: est.distanceKm,
+          motorMinutes: est.motorMinutes
+        };
+      })
+      .sort((a, b) => a.distKm - b.distKm)
+      .slice(0, limit);
+  };
 
   // Summary stats
   const summaryStats = useMemo(() => {
@@ -821,6 +1166,74 @@ export default function OfflinePage() {
             </div>
 
             <div style={{ position: "relative", width: "100%", height: 620, flex: 1 }}>
+              {/* Floating Active Route Info Pill Badge (Clean & Non-Intrusive) */}
+              {selectedRoute && (
+                <div style={{
+                  position: "absolute",
+                  top: 14,
+                  left: 60,
+                  zIndex: 1000,
+                  background: "rgba(255, 255, 255, 0.95)",
+                  backdropFilter: "blur(12px)",
+                  border: "1.5px solid #3B82F6",
+                  borderRadius: 14,
+                  padding: "8px 14px",
+                  boxShadow: "0 8px 24px rgba(37, 99, 235, 0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  maxWidth: "calc(100% - 80px)",
+                  flexWrap: "wrap"
+                }}>
+                  {/* Distance & Time Pills */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ background: "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)", color: "#FFFFFF", padding: "4px 10px", borderRadius: 8, fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", boxShadow: "0 2px 6px rgba(37, 99, 235, 0.25)" }}>
+                      📏 {selectedRoute.distanceKm} km
+                    </div>
+                    <div style={{ background: "linear-gradient(135deg, #059669 0%, #047857 100%)", color: "#FFFFFF", padding: "4px 10px", borderRadius: 8, fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", boxShadow: "0 2px 6px rgba(5, 150, 105, 0.25)" }}>
+                      🛵 ~{selectedRoute.motorMinutes} m
+                    </div>
+                  </div>
+
+                  {/* Origin & Destination Labels */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#0F172A", flexWrap: "wrap" }}>
+                    <span style={{ background: "#EEF2FF", color: "#3730A3", padding: "3px 8px", borderRadius: 6, fontSize: 11 }}>
+                      📍 {selectedRoute.origin.uniqueName}
+                    </span>
+                    <span style={{ color: "#3B82F6", fontWeight: 900 }}>➔</span>
+                    <span style={{ background: "#F0FDF4", color: "#166534", padding: "3px 8px", borderRadius: 6, fontSize: 11 }}>
+                      🏁 {selectedRoute.target.uniqueName}
+                    </span>
+
+                    {selectedRoute.isLoading ? (
+                      <span style={{ fontSize: 10, color: "#D97706", fontWeight: 700 }}>⏳ Memuat OSRM...</span>
+                    ) : selectedRoute.isOSRM ? (
+                      <span style={{ fontSize: 10, background: "#DCFCE7", color: "#15803D", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>✓ Rute Riil OSRM</span>
+                    ) : (
+                      <span style={{ fontSize: 10, background: "#FEF3C7", color: "#B45309", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>⚡ Estimasi</span>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
+                    <button
+                      onClick={() => handleSelectRoute(selectedRoute.target, selectedRoute.origin)}
+                      title="Tukar Asal & Tujuan"
+                      style={{ background: "#F1F5F9", color: "#334155", border: "1px solid #CBD5E1", borderRadius: 8, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      🔁 Tukar
+                    </button>
+                    <button
+                      onClick={() => setSelectedRoute(null)}
+                      title="Tutup Rute"
+                      style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", borderRadius: 8, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {loading ? (
                 <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#F8FAFC", color: "#64748B", fontSize: 14, fontWeight: 600 }}>
                   ⏳ Memuat peta dan data tutor...
@@ -835,6 +1248,21 @@ export default function OfflinePage() {
                   style={{ width: "100%", height: "100%", background: "#E5E7EB" }}
                 >
                   <MapRecenter center={mapCenter} zoom={mapZoom} />
+                  
+                  {/* Render Polyline and fit bounds when a route is active */}
+                  {selectedRoute && (
+                    <>
+                      <Polyline
+                        positions={selectedRoute.routeCoords}
+                        color="#2563EB"
+                        weight={5}
+                        opacity={0.85}
+                        dashArray={selectedRoute.isLoading ? "8, 8" : null}
+                      />
+                      <MapRouteFitter routeCoords={selectedRoute.routeCoords} />
+                    </>
+                  )}
+
                   <TileLayer
                     attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
@@ -956,7 +1384,7 @@ export default function OfflinePage() {
                             <div style={{ fontSize: 11, color: "#475569" }}>{b.regional} · {totalTutorsAtBranch} Tutor</div>
                           </Tooltip>
 
-                          <Popup maxWidth={320}>
+                          <Popup maxWidth={330}>
                             <div style={{ padding: "4px", fontFamily: "Inter, sans-serif" }}>
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                                 <span style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{b.uniqueName}</span>
@@ -964,7 +1392,7 @@ export default function OfflinePage() {
                               </div>
                               <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8 }}>📍 {b.address || b.branchName}</div>
 
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#F8FAFC", padding: "8px 10px", borderRadius: 8, marginBottom: 12 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#F8FAFC", padding: "8px 10px", borderRadius: 8, marginBottom: 10 }}>
                                 <div>
                                   <div style={{ fontSize: 10, fontWeight: 700, color: "#4F46E5", textTransform: "uppercase" }}>Lingua</div>
                                   <div style={{ fontSize: 15, fontWeight: 800, color: "#312E81" }}>{b.linguaTutors.length} Tutor</div>
@@ -979,7 +1407,7 @@ export default function OfflinePage() {
                               {b.linguaTutors.length > 0 && (
                                 <div style={{ marginBottom: 8 }}>
                                   <div style={{ fontSize: 11, fontWeight: 700, color: "#4F46E5", marginBottom: 4 }}>📘 Tutor Lingua:</div>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 90, overflowY: "auto" }}>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 75, overflowY: "auto" }}>
                                     {b.linguaTutors.map((name, i) => (
                                       <span key={i} style={{ background: "#EEF2FF", color: "#3730A3", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{name}</span>
                                     ))}
@@ -989,15 +1417,67 @@ export default function OfflinePage() {
 
                               {/* List Intertest Tutors */}
                               {b.intertestTutors.length > 0 && (
-                                <div>
+                                <div style={{ marginBottom: 10 }}>
                                   <div style={{ fontSize: 11, fontWeight: 700, color: "#9333EA", marginBottom: 4 }}>📕 Tutor Intertest:</div>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 90, overflowY: "auto" }}>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 75, overflowY: "auto" }}>
                                     {b.intertestTutors.map((name, i) => (
                                       <span key={i} style={{ background: "#F3E8FF", color: "#6B21A8", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>{name}</span>
                                     ))}
                                   </div>
                                 </div>
                               )}
+
+                              {/* Nearest Branches & Route Finder */}
+                              <div style={{ paddingTop: 8, borderTop: "1px dashed #E2E8F0" }}>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: "#1E293B", marginBottom: 6 }}>
+                                  🛵 Cabang Terdekat & Jarak:
+                                </div>
+                                
+                                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 110, overflowY: "auto", marginBottom: 8 }}>
+                                  {getNearestBranches(b, 4).map(nb => (
+                                    <div
+                                      key={nb.key}
+                                      onClick={() => handleSelectRoute(b, nb)}
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        padding: "5px 8px",
+                                        background: "#F8FAFC",
+                                        border: "1px solid #E2E8F0",
+                                        borderRadius: 6,
+                                        cursor: "pointer",
+                                        fontSize: 11,
+                                        transition: "all 0.15s"
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = "#EFF6FF"}
+                                      onMouseLeave={e => e.currentTarget.style.background = "#F8FAFC"}
+                                    >
+                                      <span style={{ fontWeight: 700, color: "#1E40AF" }}>{nb.uniqueName}</span>
+                                      <span style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>
+                                        {nb.distKm} km · 🛵 ~{nb.motorMinutes} m
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div style={{ fontSize: 10, fontWeight: 700, color: "#64748B", marginBottom: 3 }}>Pilih cabang tujuan lain:</div>
+                                <select
+                                  onChange={(e) => {
+                                    const target = branchMapGroups.find(x => x.key === e.target.value);
+                                    if (target) handleSelectRoute(b, target);
+                                  }}
+                                  defaultValue=""
+                                  style={{ width: "100%", padding: "5px 8px", fontSize: 11, borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", cursor: "pointer" }}
+                                >
+                                  <option value="" disabled>-- Hitung Jarak ke Cabang... --</option>
+                                  {branchMapGroups.filter(x => x.key !== b.key).map(x => (
+                                    <option key={x.key} value={x.key}>
+                                      {x.uniqueName} ({x.regional})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                           </Popup>
                         </Marker>
@@ -1009,148 +1489,338 @@ export default function OfflinePage() {
             </div>
           </div>
 
-          {/* Right Panel: Interactive Sidebar List (FIXED FLEX SHRINK BUG) */}
+          {/* Right Panel: Interactive Sidebar List with Tabs */}
           <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, overflow: "hidden", display: "flex", flexDirection: "column", height: 672, boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)" }}>
-            <div style={{ padding: "14px 18px", borderBottom: "1px solid #F1F5F9", background: "#F8FAFC", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "#0F172A", textTransform: "uppercase" }}>Daftar Kota & Cabang</div>
-                <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Klik kota untuk buka cabang & fokus peta</div>
-              </div>
-              <span style={{ fontSize: 11, background: "#E0E7FF", color: "#3730A3", fontWeight: 700, padding: "3px 9px", borderRadius: 12 }}>
-                {regionalSidebarGroups.length} Regional
-              </span>
+            
+            {/* Sidebar Tab Header */}
+            <div style={{ padding: "10px 12px", borderBottom: "1px solid #F1F5F9", background: "#F8FAFC", display: "flex", gap: 6 }}>
+              <button
+                onClick={() => setSidebarTab("branches")}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  background: sidebarTab === "branches" ? "#FFFFFF" : "transparent",
+                  color: sidebarTab === "branches" ? "#4F46E5" : "#64748B",
+                  boxShadow: sidebarTab === "branches" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                  transition: "all 0.15s"
+                }}
+              >
+                📍 Cabang ({regionalSidebarGroups.length})
+              </button>
+              <button
+                onClick={() => setSidebarTab("multiTutors")}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  background: sidebarTab === "multiTutors" ? "#FFFFFF" : "transparent",
+                  color: sidebarTab === "multiTutors" ? "#9333EA" : "#64748B",
+                  boxShadow: sidebarTab === "multiTutors" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                  transition: "all 0.15s"
+                }}
+              >
+                🔁 Multi-Cabang ({multiBranchTutors.length})
+              </button>
             </div>
 
-            {/* Scrollable Container with flexShrink: 0 on each child */}
-            <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              {regionalSidebarGroups.map(regGroup => {
-                const isExpanded = expandedRegional === regGroup.regional || selectedRegional === regGroup.regional || searchQuery.trim() !== "";
+            {/* Tab Content 1: Branches grouped by region */}
+            {sidebarTab === "branches" ? (
+              <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                {regionalSidebarGroups.map(regGroup => {
+                  const isExpanded = expandedRegional === regGroup.regional || selectedRegional === regGroup.regional || searchQuery.trim() !== "";
 
-                return (
-                  <div
-                    key={regGroup.regional}
-                    style={{
-                      flexShrink: 0, // CRITICAL FIX: prevents card collapsing/squishing bug!
-                      border: "1.5px solid #E2E8F0",
-                      borderRadius: 12,
-                      overflow: "hidden",
-                      background: "#FFFFFF",
-                      boxShadow: isExpanded ? "0 4px 12px rgba(99, 102, 241, 0.08)" : "0 1px 3px rgba(0,0,0,0.02)",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    {/* Collapsible Regional Card Header */}
+                  return (
                     <div
-                      onClick={() => {
-                        if (expandedRegional === regGroup.regional) {
-                          setExpandedRegional(null);
-                        } else {
-                          setExpandedRegional(regGroup.regional);
-                          setSelectedRegional(regGroup.regional);
-                        }
-                      }}
+                      key={regGroup.regional}
                       style={{
-                        padding: "12px 14px",
-                        background: isExpanded ? "#EEF2FF" : "#F8FAFC",
-                        cursor: "pointer",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        borderBottom: isExpanded ? "1px solid #E0E7FF" : "none",
-                        transition: "background 0.15s"
+                        flexShrink: 0,
+                        border: "1.5px solid #E2E8F0",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        background: "#FFFFFF",
+                        boxShadow: isExpanded ? "0 4px 12px rgba(99, 102, 241, 0.08)" : "0 1px 3px rgba(0,0,0,0.02)",
+                        transition: "all 0.2s"
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 12, color: "#6366F1" }}>{isExpanded ? "▼" : "▶"}</span>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>📍 {regGroup.regional}</div>
-                          <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>{regGroup.branches.length} Cabang</div>
+                      {/* Collapsible Regional Card Header */}
+                      <div
+                        onClick={() => {
+                          if (expandedRegional === regGroup.regional) {
+                            setExpandedRegional(null);
+                          } else {
+                            setExpandedRegional(regGroup.regional);
+                            setSelectedRegional(regGroup.regional);
+                          }
+                        }}
+                        style={{
+                          padding: "12px 14px",
+                          background: isExpanded ? "#EEF2FF" : "#F8FAFC",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          borderBottom: isExpanded ? "1px solid #E0E7FF" : "none",
+                          transition: "background 0.15s"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 12, color: "#6366F1" }}>{isExpanded ? "▼" : "▶"}</span>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>📍 {regGroup.regional}</div>
+                            <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>{regGroup.branches.length} Cabang</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          {regGroup.totalLingua > 0 && (
+                            <span style={{ fontSize: 10, background: "#EEF2FF", color: "#4F46E5", fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>
+                              {regGroup.totalLingua} L
+                            </span>
+                          )}
+                          {regGroup.totalIntertest > 0 && (
+                            <span style={{ fontSize: 10, background: "#F3E8FF", color: "#9333EA", fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>
+                              {regGroup.totalIntertest} I
+                            </span>
+                          )}
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        {regGroup.totalLingua > 0 && (
-                          <span style={{ fontSize: 10, background: "#EEF2FF", color: "#4F46E5", fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>
-                            {regGroup.totalLingua} L
-                          </span>
-                        )}
-                        {regGroup.totalIntertest > 0 && (
-                          <span style={{ fontSize: 10, background: "#F3E8FF", color: "#9333EA", fontWeight: 700, padding: "2px 7px", borderRadius: 6 }}>
-                            {regGroup.totalIntertest} I
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                      {/* Expandable Branch Cards */}
+                      {isExpanded && (
+                        <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, background: "#FAFBFF" }}>
+                          {regGroup.branches.map(b => {
+                            const isSelected = selectedBranchKey === b.key;
+                            const tot = b.linguaTutors.length + b.intertestTutors.length;
+                            return (
+                              <div
+                                key={b.key}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedBranchKey(b.key);
+                                  setSelectedRegional(b.regional);
+                                }}
+                                style={{
+                                  padding: "10px 12px",
+                                  borderRadius: 8,
+                                  border: `1.5px solid ${isSelected ? "#6366F1" : "#E2E8F0"}`,
+                                  background: isSelected ? "#F5F3FF" : "#FFFFFF",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s",
+                                  boxShadow: isSelected ? "0 2px 8px rgba(99, 102, 241, 0.18)" : "0 1px 2px rgba(0,0,0,0.02)"
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                  <div style={{ fontWeight: 700, fontSize: 12, color: "#0F172A" }}>{b.uniqueName}</div>
+                                  <span style={{ fontSize: 10, fontWeight: 800, background: isSelected ? "#6366F1" : "#E2E8F0", color: isSelected ? "#FFFFFF" : "#475569", padding: "2px 7px", borderRadius: 99 }}>
+                                    {tot} Tutor
+                                  </span>
+                                </div>
 
-                    {/* Expandable Branch Cards */}
-                    {isExpanded && (
-                      <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, background: "#FAFBFF" }}>
-                        {regGroup.branches.map(b => {
-                          const isSelected = selectedBranchKey === b.key;
-                          const tot = b.linguaTutors.length + b.intertestTutors.length;
+                                {/* List of Tutors badges */}
+                                <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                  {b.linguaTutors.map((t, idx) => (
+                                    <span key={`l-${idx}`} style={{ fontSize: 10, background: "#EEF2FF", color: "#3730A3", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                                      📘 {t}
+                                    </span>
+                                  ))}
+                                  {b.intertestTutors.map((t, idx) => (
+                                    <span key={`i-${idx}`} style={{ fontSize: 10, background: "#F3E8FF", color: "#6B21A8", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                                      📕 {t}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {regionalSidebarGroups.length === 0 && (
+                  <div style={{ padding: "32px 16px", textAlign: "center", color: "#94A3B8" }}>
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>Tidak ada cabang ditemukan</div>
+                    <div style={{ fontSize: 11, marginTop: 4 }}>Coba ubah kriteria pencarian atau klik Reset Filter</div>
+                    {(selectedRegional !== "All" || searchQuery !== "") && (
+                      <button
+                        onClick={() => { setSelectedRegional("All"); setSearchQuery(""); setExpandedRegional(null); }}
+                        style={{ marginTop: 12, background: "#4F46E5", color: "#FFF", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Reset Filter Pencarian
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Tab Content 2: Multi-Branch Tutors */
+              <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                {multiBranchTutors.map((mt, idx) => {
+                  const sel = tutorSelections[mt.tutorName] || {
+                    originKey: mt.branches[0]?.key,
+                    targetKey: mt.branches[1]?.key || mt.branches[0]?.key
+                  };
+
+                  const curOrigin = mt.branches.find(b => b.key === sel.originKey) || mt.branches[0];
+                  const curTarget = mt.branches.find(b => b.key === sel.targetKey) || mt.branches[1] || mt.branches[0];
+
+                  const curEst = calculateHaversineEstimate(
+                    curOrigin.origLat, curOrigin.origLng,
+                    curTarget.origLat, curTarget.origLng
+                  );
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        flexShrink: 0,
+                        border: "1.5px solid #E0E7FF",
+                        borderRadius: 12,
+                        padding: 12,
+                        background: "#FFFFFF",
+                        boxShadow: "0 2px 6px rgba(99, 102, 241, 0.06)"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: "#1E1B4B" }}>🧑‍🏫 {mt.tutorName}</span>
+                        <span style={{ fontSize: 10, fontWeight: 800, background: "#EEF2FF", color: "#4F46E5", padding: "2px 8px", borderRadius: 99 }}>
+                          {mt.branchCount} Cabang
+                        </span>
+                      </div>
+
+                      {/* Interactive Branch List */}
+                      <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "8px 10px", marginBottom: 8, fontSize: 11, border: "1px solid #F1F5F9" }}>
+                        <div style={{ fontWeight: 700, color: "#475569", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span>Daftar Cabang ({mt.branches.length}):</span>
+                          <span style={{ fontSize: 10, color: "#6366F1" }}>Pilih Asal & Tujuan</span>
+                        </div>
+
+                        {mt.branches.map((b, bIdx) => {
+                          const isAsal = b.key === curOrigin.key;
+                          const isTujuan = b.key === curTarget.key;
+
                           return (
                             <div
-                              key={b.key}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedBranchKey(b.key);
-                                setSelectedRegional(b.regional);
-                              }}
+                              key={bIdx}
                               style={{
-                                padding: "10px 12px",
-                                borderRadius: 8,
-                                border: `1.5px solid ${isSelected ? "#6366F1" : "#E2E8F0"}`,
-                                background: isSelected ? "#F5F3FF" : "#FFFFFF",
-                                cursor: "pointer",
-                                transition: "all 0.15s",
-                                boxShadow: isSelected ? "0 2px 8px rgba(99, 102, 241, 0.18)" : "0 1px 2px rgba(0,0,0,0.02)"
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                marginBottom: 4,
+                                background: isAsal ? "#EEF2FF" : isTujuan ? "#F0FDF4" : "#FFFFFF",
+                                border: `1px solid ${isAsal ? "#C7D2FE" : isTujuan ? "#BBF7D0" : "#E2E8F0"}`
                               }}
                             >
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                <div style={{ fontWeight: 700, fontSize: 12, color: "#0F172A" }}>{b.uniqueName}</div>
-                                <span style={{ fontSize: 10, fontWeight: 800, background: isSelected ? "#6366F1" : "#E2E8F0", color: isSelected ? "#FFFFFF" : "#475569", padding: "2px 7px", borderRadius: 99 }}>
-                                  {tot} Tutor
-                                </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                {isAsal && <span style={{ fontSize: 9, background: "#4F46E5", color: "#FFF", borderRadius: 4, padding: "1px 5px", fontWeight: 800 }}>ASAL</span>}
+                                {isTujuan && <span style={{ fontSize: 9, background: "#166534", color: "#FFF", borderRadius: 4, padding: "1px 5px", fontWeight: 800 }}>TUJUAN</span>}
+                                <span style={{ color: "#0F172A", fontWeight: 600, fontSize: 11 }}>{b.uniqueName}</span>
                               </div>
 
-                              {/* List of Tutors badges */}
-                              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                {b.linguaTutors.map((t, idx) => (
-                                  <span key={`l-${idx}`} style={{ fontSize: 10, background: "#EEF2FF", color: "#3730A3", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
-                                    📘 {t}
-                                  </span>
-                                ))}
-                                {b.intertestTutors.map((t, idx) => (
-                                  <span key={`i-${idx}`} style={{ fontSize: 10, background: "#F3E8FF", color: "#6B21A8", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
-                                    📕 {t}
-                                  </span>
-                                ))}
+                              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                {!isAsal && (
+                                  <button
+                                    onClick={() => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: b.key, targetKey: curTarget.key } }))}
+                                    style={{ background: "#E0E7FF", color: "#3730A3", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                                  >
+                                    Set Asal
+                                  </button>
+                                )}
+                                {!isTujuan && (
+                                  <button
+                                    onClick={() => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: curOrigin.key, targetKey: b.key } }))}
+                                    style={{ background: "#DCFCE7", color: "#166534", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                                  >
+                                    Set Tujuan
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
                         })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
 
-              {regionalSidebarGroups.length === 0 && (
-                <div style={{ padding: "32px 16px", textAlign: "center", color: "#94A3B8" }}>
-                  <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>Tidak ada cabang ditemukan</div>
-                  <div style={{ fontSize: 11, marginTop: 4 }}>Coba ubah kriteria pencarian atau klik Reset Filter</div>
-                  {(selectedRegional !== "All" || searchQuery !== "") && (
-                    <button
-                      onClick={() => { setSelectedRegional("All"); setSearchQuery(""); setExpandedRegional(null); }}
-                      style={{ marginTop: 12, background: "#4F46E5", color: "#FFF", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                    >
-                      Reset Filter Pencarian
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                        {/* Interactive Dropdowns */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8, paddingTop: 8, borderTop: "1px dashed #CBD5E1" }}>
+                          <div>
+                            <label style={{ fontSize: 9, fontWeight: 800, color: "#4F46E5", textTransform: "uppercase", display: "block", marginBottom: 2 }}>📍 Dari (Asal):</label>
+                            <select
+                              value={curOrigin.key}
+                              onChange={(e) => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: e.target.value, targetKey: curTarget.key } }))}
+                              style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", fontWeight: 600, cursor: "pointer" }}
+                            >
+                              {mt.branches.map(b => (
+                                <option key={b.key} value={b.key}>{b.uniqueName}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label style={{ fontSize: 9, fontWeight: 800, color: "#166534", textTransform: "uppercase", display: "block", marginBottom: 2 }}>🏁 Ke (Tujuan):</label>
+                            <select
+                              value={curTarget.key}
+                              onChange={(e) => setTutorSelections(prev => ({ ...prev, [mt.tutorName]: { originKey: curOrigin.key, targetKey: e.target.value } }))}
+                              style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 6, border: "1px solid #CBD5E1", background: "#FFFFFF", fontWeight: 600, cursor: "pointer" }}
+                            >
+                              {mt.branches.map(b => (
+                                <option key={b.key} value={b.key}>{b.uniqueName}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Route distance & action button */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px dashed #E2E8F0" }}>
+                        <div style={{ fontSize: 11, color: "#64748B" }}>
+                          📏 <b>{curEst.distanceKm} km</b> · 🛵 <b>~{curEst.motorMinutes} m</b>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const b1 = branchMapGroups.find(x => x.key === curOrigin.key) || curOrigin;
+                            const b2 = branchMapGroups.find(x => x.key === curTarget.key) || curTarget;
+                            handleSelectRoute(b1, b2);
+                          }}
+                          disabled={curOrigin.key === curTarget.key}
+                          style={{
+                            background: curOrigin.key === curTarget.key ? "#CBD5E1" : "linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "6px 12px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: curOrigin.key === curTarget.key ? "not-allowed" : "pointer"
+                          }}
+                        >
+                          🗺️ Lihat Rute
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {multiBranchTutors.length === 0 && (
+                  <div style={{ padding: "32px 16px", textAlign: "center", color: "#94A3B8" }}>
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>👥</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>Tidak ada tutor di multi-cabang</div>
+                    <div style={{ fontSize: 11, marginTop: 4 }}>Semua tutor saat ini terdaftar di 1 cabang saja</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
         </div>
