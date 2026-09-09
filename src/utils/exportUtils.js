@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 
 /**
  * Utility to export structured array data to Excel (.xlsx)
@@ -102,13 +102,13 @@ export function exportToPdf({
     })
   );
 
-  doc.autoTable({
+  autoTable(doc, {
     head: [headers],
     body: rows,
     startY,
     styles: {
-      fontSize: 8.5,
-      cellPadding: 3,
+      fontSize: 8,
+      cellPadding: 2.5,
       font: "helvetica",
       overflow: "linebreak",
       textColor: [30, 41, 59],
@@ -139,3 +139,4 @@ export function exportToPdf({
 
   doc.save(`${fileName}.pdf`);
 }
+

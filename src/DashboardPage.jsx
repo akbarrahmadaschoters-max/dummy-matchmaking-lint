@@ -736,23 +736,29 @@ export default function DashboardPage({ teachers, setTeachers }) {
     }
   };
 
+  const getExportColumns = () => [
+    { header: "Rank", key: (t) => t.rank === "—" ? "—" : `#${t.rank}` },
+    { header: "Nama Teacher", key: "name" },
+    { header: "Program", key: "program" },
+    { header: "Time Availability", key: (t) => t.availability || "—" },
+    { header: "Skor QC", key: (t) => t.qc !== null && t.qc !== undefined ? t.qc : "—" },
+    { header: "Skor NPS", key: (t) => t.nps !== null && t.nps !== undefined ? t.nps : "—" },
+    { header: "Class Inspection", key: (t) => t.hasInspection ? (t.inspection ?? 0) : "Belum Diinspeksi" },
+    { header: "Compliance", key: (t) => t.compliance !== null && t.compliance !== undefined ? t.compliance : "—" },
+    { header: "Ganti Tutor", key: (t) => `${t.gantiTutor || 0}/3 (${t.gantiTutor >= 1 && t.gantiTutor < 3 ? "-10" : "0"})` },
+    { header: "Final Score", key: (t) => t.score?.final ?? 0 },
+    { header: "Status", key: (t) => t.status || "—" },
+    { header: "Kota Domisili", key: (t) => t.kota || "—" },
+    { header: "No. Telp", key: (t) => t.phone || "—" },
+    { header: "Email", key: (t) => t.email || "—" },
+  ];
+
   const handleExportPDF = () => {
     exportToPdf({
       title: "Dashboard Overview - Matchmaking Scored Teachers",
       subtitle: `Program: ${filterProgram} | Status: ${filterStatus} | Total Data: ${filtered.length}`,
       fileName: `Dashboard_Matchmaking_${filterProgram}_${Date.now()}`,
-      columns: [
-        { header: "Rank", key: (t) => t.rank || "-" },
-        { header: "Nama Teacher", key: "name" },
-        { header: "Program", key: "program" },
-        { header: "Availability", key: (t) => t.availability || "-" },
-        { header: "Status", key: "status" },
-        { header: "Final Score", key: (t) => t.score?.final ?? 0 },
-        { header: "QC Score", key: (t) => t.score?.qcScore ?? "-" },
-        { header: "NPS Score", key: (t) => t.score?.npsScore ?? "-" },
-        { header: "Inspection", key: (t) => t.score?.inspectionScore ?? "-" },
-        { header: "Compliance", key: (t) => t.score?.complianceScore ?? "-" },
-      ],
+      columns: getExportColumns(),
       data: filtered,
     });
   };
@@ -761,18 +767,7 @@ export default function DashboardPage({ teachers, setTeachers }) {
     exportToExcel({
       fileName: `Dashboard_Matchmaking_${filterProgram}_${Date.now()}`,
       sheetName: "Dashboard Teachers",
-      columns: [
-        { header: "Rank", key: (t) => t.rank || "-" },
-        { header: "Nama Teacher", key: "name" },
-        { header: "Program", key: "program" },
-        { header: "Availability", key: (t) => t.availability || "-" },
-        { header: "Status", key: "status" },
-        { header: "Final Score", key: (t) => t.score?.final ?? 0 },
-        { header: "QC Score", key: (t) => t.score?.qcScore ?? "-" },
-        { header: "NPS Score", key: (t) => t.score?.npsScore ?? "-" },
-        { header: "Inspection", key: (t) => t.score?.inspectionScore ?? "-" },
-        { header: "Compliance", key: (t) => t.score?.complianceScore ?? "-" },
-      ],
+      columns: getExportColumns(),
       data: filtered,
     });
   };
