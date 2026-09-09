@@ -2,7 +2,8 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import Papa from "papaparse";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Sector } from "recharts";
 import { INITIAL_TEACHERS, calcScore, getStatus, STATUS_CONFIG, scoreColor } from "./scoring.js";
-import { StatusBadge, ScoreBar } from "./components.jsx";
+import { StatusBadge, ScoreBar, ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 import { useGoogleLogin } from "@react-oauth/google";
 import { db } from "./firebase.js";
 import { doc, setDoc, deleteDoc, writeBatch, collection } from "firebase/firestore";
@@ -735,6 +736,47 @@ export default function DashboardPage({ teachers, setTeachers }) {
     }
   };
 
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: "Dashboard Overview - Matchmaking Scored Teachers",
+      subtitle: `Program: ${filterProgram} | Status: ${filterStatus} | Total Data: ${filtered.length}`,
+      fileName: `Dashboard_Matchmaking_${filterProgram}_${Date.now()}`,
+      columns: [
+        { header: "Rank", key: (t) => t.rank || "-" },
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Availability", key: (t) => t.availability || "-" },
+        { header: "Status", key: "status" },
+        { header: "Final Score", key: (t) => t.score?.final ?? 0 },
+        { header: "QC Score", key: (t) => t.score?.qcScore ?? "-" },
+        { header: "NPS Score", key: (t) => t.score?.npsScore ?? "-" },
+        { header: "Inspection", key: (t) => t.score?.inspectionScore ?? "-" },
+        { header: "Compliance", key: (t) => t.score?.complianceScore ?? "-" },
+      ],
+      data: filtered,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Dashboard_Matchmaking_${filterProgram}_${Date.now()}`,
+      sheetName: "Dashboard Teachers",
+      columns: [
+        { header: "Rank", key: (t) => t.rank || "-" },
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Availability", key: (t) => t.availability || "-" },
+        { header: "Status", key: "status" },
+        { header: "Final Score", key: (t) => t.score?.final ?? 0 },
+        { header: "QC Score", key: (t) => t.score?.qcScore ?? "-" },
+        { header: "NPS Score", key: (t) => t.score?.npsScore ?? "-" },
+        { header: "Inspection", key: (t) => t.score?.inspectionScore ?? "-" },
+        { header: "Compliance", key: (t) => t.score?.complianceScore ?? "-" },
+      ],
+      data: filtered,
+    });
+  };
+
   return (
     <div>
         {/* Page Title */}
@@ -746,7 +788,8 @@ export default function DashboardPage({ teachers, setTeachers }) {
               Data per {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
             <button disabled={isResetting} onClick={handleResetData} style={{
               background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
               padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: isResetting ? 0.6 : 1

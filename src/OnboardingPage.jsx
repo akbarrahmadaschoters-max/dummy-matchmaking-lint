@@ -4,6 +4,8 @@ import { db } from "./firebase.js";
 import { doc, setDoc, writeBatch, collection } from "firebase/firestore";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
 import { deleteAllTeachers } from "./teacherService.js";
+import { ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 
 function ProgramAnalyticsCard({ programName, teachersList }) {
   const promotedCount = teachersList.filter(t => t.identifier === "Lama" && t.qc !== null).length;
@@ -441,6 +443,51 @@ export default function OnboardingPage({ teachers, setTeachers }) {
     }
   };
 
+  const activeModeTeachers = useMemo(() => {
+    return filteredTeachers.filter(t => {
+      if (activeTabMode === "baru") {
+        return t.identifier === "Baru" || t.qc === null || t.qc === undefined;
+      } else {
+        return t.identifier === "Lama" && t.qc !== null && t.qc !== undefined;
+      }
+    });
+  }, [filteredTeachers, activeTabMode]);
+
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: `Onboarding & Pool Management (${activeTabMode === "baru" ? "Tutor Baru" : "Tutor Reguler"})`,
+      subtitle: `Program: ${filterProgram} | Total Data: ${activeModeTeachers.length}`,
+      fileName: `Onboarding_${activeTabMode}_${Date.now()}`,
+      columns: [
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Identifier", key: (t) => t.identifier === "Baru" || t.qc === null ? "Onboarding / Baru" : "Pool Utama" },
+        { header: "QC Score", key: (t) => t.qc ?? "-" },
+        { header: "NPS Score", key: (t) => t.nps ?? "-" },
+        { header: "Compliance", key: (t) => t.compliance ?? "-" },
+        { header: "Kota", key: (t) => t.kota || "-" },
+      ],
+      data: activeModeTeachers,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Onboarding_${activeTabMode}_${Date.now()}`,
+      sheetName: "Onboarding Teachers",
+      columns: [
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Identifier", key: (t) => t.identifier === "Baru" || t.qc === null ? "Onboarding / Baru" : "Pool Utama" },
+        { header: "QC Score", key: (t) => t.qc ?? "-" },
+        { header: "NPS Score", key: (t) => t.nps ?? "-" },
+        { header: "Compliance", key: (t) => t.compliance ?? "-" },
+        { header: "Kota", key: (t) => t.kota || "-" },
+      ],
+      data: activeModeTeachers,
+    });
+  };
+
   return (
     <div style={{ padding: "0 0 60px" }}>
       {/* Top Title Bar */}
@@ -450,7 +497,8 @@ export default function OnboardingPage({ teachers, setTeachers }) {
           <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Terbagi menjadi tab khusus Tutor Baru (Belum Punya Student) dan Tutor Reguler (Punya Student & QC).</p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
           <button disabled={isResetting} onClick={handleResetData} style={{
             background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
             padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", opacity: isResetting ? 0.6 : 1

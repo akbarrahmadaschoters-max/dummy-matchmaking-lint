@@ -4,7 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import { rankTeachers, scoreColor } from "./scoring.js";
-import { StatusBadge } from "./components.jsx";
+import { StatusBadge, ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 
 const FACTORS = [
   { key: "qc", label: "QC Score" },
@@ -104,14 +105,65 @@ export default function ComparisonPage({ teachers }) {
     return { winner, loser, absDiff, reasons, tie: absDiff === 0 };
   }, [ready, teacherA, teacherB]);
 
+  const exportData = useMemo(() => {
+    if (ready) {
+      return [teacherA, teacherB];
+    }
+    return ranked;
+  }, [ready, teacherA, teacherB, ranked]);
+
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: ready ? `Comparison: ${teacherA.name} vs ${teacherB.name}` : "Teacher Comparison Ranking",
+      subtitle: ready ? `Winner: ${recommendation?.winner?.name || "-"}` : `Total Teachers: ${ranked.length}`,
+      fileName: `Teacher_Comparison_${Date.now()}`,
+      columns: [
+        { header: "Rank", key: (t) => t.rank || "-" },
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Availability", key: (t) => t.availability || "-" },
+        { header: "Status", key: (t) => t.status || "-" },
+        { header: "Skor Final", key: (t) => t.score?.final ?? 0 },
+        { header: "QC Score", key: (t) => t.qc ?? "-" },
+        { header: "NPS Score", key: (t) => t.nps ?? "-" },
+        { header: "Inspection", key: (t) => t.inspection ?? "-" },
+        { header: "Compliance", key: (t) => t.compliance ?? "-" },
+      ],
+      data: exportData,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Teacher_Comparison_${Date.now()}`,
+      sheetName: "Teacher Comparison",
+      columns: [
+        { header: "Rank", key: (t) => t.rank || "-" },
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Availability", key: (t) => t.availability || "-" },
+        { header: "Status", key: (t) => t.status || "-" },
+        { header: "Skor Final", key: (t) => t.score?.final ?? 0 },
+        { header: "QC Score", key: (t) => t.qc ?? "-" },
+        { header: "NPS Score", key: (t) => t.nps ?? "-" },
+        { header: "Inspection", key: (t) => t.inspection ?? "-" },
+        { header: "Compliance", key: (t) => t.compliance ?? "-" },
+      ],
+      data: exportData,
+    });
+  };
+
   const card = { background: "#FFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "22px 24px" };
   const cardTitle = { fontSize: 12, fontWeight: 700, color: "#94A3B8", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 18 };
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Teacher Comparison</h1>
-        <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Bandingkan dua teacher head-to-head · Auto-suggest pasangan terbaik</p>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Teacher Comparison</h1>
+          <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Bandingkan dua teacher head-to-head · Auto-suggest pasangan terbaik</p>
+        </div>
+        <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
       </div>
 
       {/* Auto-suggest banner */}

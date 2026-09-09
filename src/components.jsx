@@ -27,3 +27,62 @@ export function ScoreBar({ val, color }) {
     </div>
   );
 }
+
+export function ExportButtons({ onExportPDF, onExportExcel, style = {} }) {
+  return (
+    <div style={{ display: "inline-flex", gap: 8, alignItems: "center", ...style }}>
+      <button
+        onClick={onExportPDF}
+        type="button"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 14px",
+          borderRadius: 9,
+          border: "1.5px solid #FCA5A5",
+          background: "#FEF2F2",
+          color: "#991B1B",
+          fontWeight: 700,
+          fontSize: 12,
+          cursor: "pointer",
+          transition: "all 0.15s ease",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.04)"
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "#FEE2E2"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "#FEF2F2"; }}
+        title="Download PDF"
+      >
+        <span style={{ fontSize: 13 }}>📄</span>
+        <span>Download PDF</span>
+      </button>
+
+      <button
+        onClick={onExportExcel}
+        type="button"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 14px",
+          borderRadius: 9,
+          border: "1.5px solid #86EFAC",
+          background: "#F0FDF4",
+          color: "#166534",
+          fontWeight: 700,
+          fontSize: 12,
+          cursor: "pointer",
+          transition: "all 0.15s ease",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.04)"
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "#DCFCE7"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "#F0FDF4"; }}
+        title="Download Excel"
+      >
+        <span style={{ fontSize: 13 }}>📊</span>
+        <span>Download Excel</span>
+      </button>
+    </div>
+  );
+}
+

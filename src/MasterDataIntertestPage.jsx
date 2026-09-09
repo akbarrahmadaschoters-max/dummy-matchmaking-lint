@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef } from "react";
 import Papa from "papaparse";
 import { importMasterIntertestTeachers, deleteAllMasterIntertestTeachers } from "./masterIntertestService.js";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
+import { ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 
 function DetailModal({ tutor, onClose }) {
   if (!tutor) return null;
@@ -352,6 +354,47 @@ export default function MasterDataIntertestPage({ masterIntertestTeachers = [], 
     return { activeCount, totalActiveB2C, totalActiveB2B, topCityName, topCityCount };
   }, [filtered]);
 
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: "Master Data Tutor Intertest",
+      subtitle: `Total Data: ${filtered.length} tutor`,
+      fileName: `Master_Data_Intertest_${Date.now()}`,
+      columns: [
+        { header: "Nama Tutor", key: "name" },
+        { header: "Email", key: "email" },
+        { header: "No. Telp", key: "phone" },
+        { header: "Kota", key: "kota" },
+        { header: "Status Intertest", key: "statusIntertest" },
+        { header: "Status Kemitraan", key: "statusKemitraan" },
+        { header: "Posisi", key: "posisi" },
+        { header: "Program", key: "program" },
+        { header: "Kelas Aktif B2C", key: "kelasAktifB2C" },
+        { header: "Kelas Aktif B2B", key: "kelasAktifB2B" },
+      ],
+      data: filtered,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Master_Data_Intertest_${Date.now()}`,
+      sheetName: "Master Data Intertest",
+      columns: [
+        { header: "Nama Tutor", key: "name" },
+        { header: "Email", key: "email" },
+        { header: "No. Telp", key: "phone" },
+        { header: "Kota", key: "kota" },
+        { header: "Status Intertest", key: "statusIntertest" },
+        { header: "Status Kemitraan", key: "statusKemitraan" },
+        { header: "Posisi", key: "posisi" },
+        { header: "Program", key: "program" },
+        { header: "Kelas Aktif B2C", key: "kelasAktifB2C" },
+        { header: "Kelas Aktif B2B", key: "kelasAktifB2B" },
+      ],
+      data: filtered,
+    });
+  };
+
   return (
     <div>
       {/* Page Title & Actions Header */}
@@ -361,7 +404,8 @@ export default function MasterDataIntertestPage({ masterIntertestTeachers = [], 
           <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Database profil, statistik kelas B2C & B2B, dan domisili tutor Intertest</p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
           <button disabled={isResetting} onClick={handleResetData} style={{
             background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
             padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: isResetting ? 0.6 : 1

@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { db } from "./firebase.js";
 import { doc, setDoc } from "firebase/firestore";
 import { scoreColor } from "./scoring.js";
+import { ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 
 export default function DisqualifiedPage({ teachers, setTeachers }) {
   const [filterReason, setFilterReason] = useState("Semua");
@@ -31,11 +33,45 @@ export default function DisqualifiedPage({ teachers, setTeachers }) {
     }
   };
 
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: "Disqualified Teachers List",
+      subtitle: `Filter Alasan: ${filterReason} | Total Data: ${filtered.length}`,
+      fileName: `Disqualified_Teachers_${Date.now()}`,
+      columns: [
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Final Score", key: (t) => t.score?.final || 0 },
+        { header: "Alasan Disqualify", key: (t) => t.disqualifiedReason || "-" },
+        { header: "Tanggal Disqualify", key: (t) => t.disqualifiedAt ? new Date(t.disqualifiedAt).toLocaleString("id-ID") : "-" },
+      ],
+      data: filtered,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Disqualified_Teachers_${Date.now()}`,
+      sheetName: "Disqualified Teachers",
+      columns: [
+        { header: "Nama Teacher", key: "name" },
+        { header: "Program", key: "program" },
+        { header: "Final Score", key: (t) => t.score?.final || 0 },
+        { header: "Alasan Disqualify", key: (t) => t.disqualifiedReason || "-" },
+        { header: "Tanggal Disqualify", key: (t) => t.disqualifiedAt ? new Date(t.disqualifiedAt).toLocaleString("id-ID") : "-" },
+      ],
+      data: filtered,
+    });
+  };
+
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 24px" }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>Disqualified Teachers</h1>
-        <p style={{ margin: 0, color: "#64748B", fontSize: 14 }}>Daftar teacher yang didiskualifikasi secara manual oleh operasional.</p>
+      <div style={{ marginBottom: 28, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: "0 0 8px" }}>Disqualified Teachers</h1>
+          <p style={{ margin: 0, color: "#64748B", fontSize: 14 }}>Daftar teacher yang didiskualifikasi secara manual oleh operasional.</p>
+        </div>
+        <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
       </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>

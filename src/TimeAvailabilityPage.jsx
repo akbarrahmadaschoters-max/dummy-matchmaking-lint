@@ -5,6 +5,8 @@ import { collection, doc, getDocs, writeBatch, setDoc, onSnapshot } from "fireba
 import { importTimeAvailability, deleteAllTimeAvailability } from "./timeAvailabilityService.js";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
+import { ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 
 // Helper function to calculate percentile
 function getPercentile(arr, p) {
@@ -532,6 +534,43 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
     ].filter(item => item.value > 0);
   }, [metrics]);
 
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: "Tutor Time Availability Analysis",
+      subtitle: `Program: ${filterType} | Kategori: ${filterClass5} | Total Data: ${filtered.length}`,
+      fileName: `Time_Availability_${filterType}_${Date.now()}`,
+      columns: [
+        { header: "Nama Tutor", key: "name" },
+        { header: "Tipe Program", key: "type" },
+        { header: "Rata-rata Sesi", key: (t) => t.average ? Number(t.average).toFixed(1) : "0" },
+        { header: "Kategori Availability", key: "class5" },
+        { header: "Sesi Maret", key: (t) => t.march ?? 0 },
+        { header: "Sesi April", key: (t) => t.april ?? 0 },
+        { header: "Sesi Mei", key: (t) => t.may ?? 0 },
+        { header: "Sesi Juni", key: (t) => t.june ?? 0 },
+      ],
+      data: filtered,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Time_Availability_${filterType}_${Date.now()}`,
+      sheetName: "Time Availability",
+      columns: [
+        { header: "Nama Tutor", key: "name" },
+        { header: "Tipe Program", key: "type" },
+        { header: "Rata-rata Sesi", key: (t) => t.average ? Number(t.average).toFixed(1) : "0" },
+        { header: "Kategori Availability", key: "class5" },
+        { header: "Sesi Maret", key: (t) => t.march ?? 0 },
+        { header: "Sesi April", key: (t) => t.april ?? 0 },
+        { header: "Sesi Mei", key: (t) => t.may ?? 0 },
+        { header: "Sesi Juni", key: (t) => t.june ?? 0 },
+      ],
+      data: filtered,
+    });
+  };
+
   return (
     <div style={{ fontFamily: "Inter, sans-serif" }}>
       {/* Page Title & Actions Header */}
@@ -541,7 +580,8 @@ export default function TimeAvailabilityPage({ timeAvailabilityData = [], setTim
           <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Analisis ketersediaan waktu berdasarkan rata-rata sesi mengajar (Percentiles: P20, P40, P60, P80)</p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
           {isSynced ? (
             <button disabled={isSyncing} onClick={handleUndoSync} style={{
               background: "#FFFbeb", color: "#D97706", border: "1.5px solid #FDE68A", borderRadius: 10,

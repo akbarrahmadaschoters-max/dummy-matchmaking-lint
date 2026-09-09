@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef } from "react";
 import Papa from "papaparse";
 import { importMasterTeachers, deleteAllMasterTeachers } from "./masterTeacherService.js";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
+import { ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 
 function getSlmsStatus(t) {
   if (!t) return "";
@@ -485,6 +487,43 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
     return { verifiedCount, totalVerifiedCount, mastersCount, bachelorsCount, maleCount, femaleCount };
   }, [filtered, masterTeachers]);
 
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: "Master Data Tutor Lingua",
+      subtitle: `Total Data: ${filtered.length} tutor`,
+      fileName: `Master_Data_Lingua_${Date.now()}`,
+      columns: [
+        { header: "Nama Tutor", key: "name" },
+        { header: "No. Telp", key: "phone" },
+        { header: "Email", key: "email" },
+        { header: "Posisi", key: (t) => getPosisi(t) },
+        { header: "Pendidikan", key: (t) => getEducationLevel(t) },
+        { header: "Gender", key: (t) => getGender(t) },
+        { header: "SLMS Status", key: (t) => getSlmsStatus(t) },
+        { header: "Skor Eng Test", key: (t) => t.overallScore || t["Overall Score(Eng Test)"] || "-" },
+      ],
+      data: filtered,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Master_Data_Lingua_${Date.now()}`,
+      sheetName: "Master Data Lingua",
+      columns: [
+        { header: "Nama Tutor", key: "name" },
+        { header: "No. Telp", key: "phone" },
+        { header: "Email", key: "email" },
+        { header: "Posisi", key: (t) => getPosisi(t) },
+        { header: "Pendidikan", key: (t) => getEducationLevel(t) },
+        { header: "Gender", key: (t) => getGender(t) },
+        { header: "SLMS Status", key: (t) => getSlmsStatus(t) },
+        { header: "Skor Eng Test", key: (t) => t.overallScore || t["Overall Score(Eng Test)"] || "-" },
+      ],
+      data: filtered,
+    });
+  };
+
   return (
     <div>
       {/* Page Title & Actions Header */}
@@ -494,7 +533,8 @@ export default function MasterDataPage({ masterTeachers = [], setMasterTeachers 
           <p style={{ fontSize: 13, color: "#64748B", margin: "4px 0 0" }}>Database komprehensif profil, skor tes, dan riwayat pendidikan tutor</p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
           <button disabled={isResetting} onClick={handleResetData} style={{
             background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
             padding: "11px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: isResetting ? 0.6 : 1

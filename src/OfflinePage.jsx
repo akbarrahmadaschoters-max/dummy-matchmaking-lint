@@ -5,6 +5,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import targaryenPassword from "../env/HouseofTargareyan?raw";
 import { deleteAllTeachers } from "./teacherService.js";
+import { ExportButtons } from "./components.jsx";
+import { exportToExcel, exportToPdf } from "./utils/exportUtils.js";
 
 // Helper component to center map smoothly on selected branch
 function MapRecenter({ center, zoom }) {
@@ -795,6 +797,39 @@ export default function OfflinePage() {
     );
   }, [searchQuery, selectedRegional, filteredTutors, globalSearchMatches]);
 
+  const handleExportPDF = () => {
+    exportToPdf({
+      title: "Offline BAC & EAC Tutor Mapping Data",
+      subtitle: `Program: ${selectedProgram} | Regional: ${selectedRegional} | Total Data: ${filteredTutors.length}`,
+      fileName: `Offline_Tutors_${selectedProgram}_${Date.now()}`,
+      columns: [
+        { header: "Nama Tutor", key: "tutorName" },
+        { header: "Cabang (Unique)", key: "uniqueName" },
+        { header: "Nama Cabang", key: "branchName" },
+        { header: "Regional", key: "regional" },
+        { header: "Program", key: "program" },
+        { header: "Alamat", key: "address" },
+      ],
+      data: filteredTutors,
+    });
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      fileName: `Offline_Tutors_${selectedProgram}_${Date.now()}`,
+      sheetName: "Offline Tutors",
+      columns: [
+        { header: "Nama Tutor", key: "tutorName" },
+        { header: "Cabang (Unique)", key: "uniqueName" },
+        { header: "Nama Cabang", key: "branchName" },
+        { header: "Regional", key: "regional" },
+        { header: "Program", key: "program" },
+        { header: "Alamat", key: "address" },
+      ],
+      data: filteredTutors,
+    });
+  };
+
   return (
     <div style={{ paddingBottom: 40, fontFamily: "Inter, -apple-system, BlinkMacSystemFont, sans-serif" }}>
       {/* Header Bar */}
@@ -809,7 +844,8 @@ export default function OfflinePage() {
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <ExportButtons onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} />
           <button disabled={isResetting} onClick={handleResetData} style={{
             background: "#FEF2F2", color: "#EF4444", border: "1.5px solid #FECACA", borderRadius: 10,
             padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: isResetting ? "not-allowed" : "pointer", opacity: isResetting ? 0.6 : 1
