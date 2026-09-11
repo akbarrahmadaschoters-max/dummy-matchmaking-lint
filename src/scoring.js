@@ -1,44 +1,69 @@
 // ─── Dummy Data ────────────────────────────────────────────────
 export const INITIAL_TEACHERS = [];
 
+// ─── Helper function ────────────────────────────────────────────
+function parseScoreValue(v) {
+  if (v === null || v === undefined || v === "" || String(v).trim().toLowerCase() === "nan") return null;
+  const n = Number(v);
+  return isNaN(n) ? null : Math.max(0, Math.min(100, n));
+}
+
 // ─── Scoring Engine ────────────────────────────────────────────
 export function calcScore(t) {
-  if (t.identifier === "Baru") {
-    return { final: 0, penalty: 0, breakdown: {}, disqualifiedReason: null, isOnboarding: true };
+  if (!t || t.identifier === "Baru") {
+    return {
+      final: 0,
+      penalty: 0,
+      breakdown: {
+        qc:         { label: "QC Score",         val: null, weight: 0, contrib: 0 },
+        nps:        { label: "NPS Tutor",        val: null, weight: 0, contrib: 0 },
+        inspection: { label: "Class Inspection", val: null, weight: 0, contrib: 0 },
+        compliance: { label: "Compliance",       val: null, weight: 0, contrib: 0 },
+      },
+      disqualifiedReason: null,
+      isOnboarding: true
+    };
   }
 
-  let activeWeights = {
-    qc: (t.qc !== null && t.qc !== undefined && Number(t.qc) > 0) ? 0.35 : 0,
-    nps: (t.nps !== null && t.nps !== undefined && Number(t.nps) > 0) ? 0.30 : 0,
-    ins: (t.hasInspection && t.inspection !== null && t.inspection !== undefined && Number(t.inspection) > 0) ? 0.20 : 0,
-    comp: (t.compliance !== null && t.compliance !== undefined && Number(t.compliance) > 0) ? 0.15 : 0,
+  const qcVal   = parseScoreValue(t.qc);
+  const npsVal  = parseScoreValue(t.nps);
+  const insVal  = t.hasInspection ? parseScoreValue(t.inspection) : null;
+  const compVal = parseScoreValue(t.compliance);
+
+  // Active weights: a component is active if it has a valid numerical value (>= 0)
+  const activeWeights = {
+    qc:   qcVal   !== null ? 0.35 : 0,
+    nps:  npsVal  !== null ? 0.30 : 0,
+    ins:  insVal  !== null ? 0.20 : 0,
+    comp: compVal !== null ? 0.15 : 0,
   };
 
-  let sumW = activeWeights.qc + activeWeights.nps + activeWeights.ins + activeWeights.comp;
+  const sumW = activeWeights.qc + activeWeights.nps + activeWeights.ins + activeWeights.comp;
   let qcW = 0, npsW = 0, insW = 0, compW = 0;
-  
+
   if (sumW > 0) {
-    qcW = activeWeights.qc / sumW;
-    npsW = activeWeights.nps / sumW;
-    insW = activeWeights.ins / sumW;
+    qcW   = activeWeights.qc / sumW;
+    npsW  = activeWeights.nps / sumW;
+    insW  = activeWeights.ins / sumW;
     compW = activeWeights.comp / sumW;
   }
 
-  const qcContrib   = (t.qc || 0) * qcW;
-  const npsContrib  = (t.nps || 0) * npsW;
-  const insContrib  = t.hasInspection ? (t.inspection || 0) * insW : 0;
-  const compContrib = (t.compliance || 0) * compW;
-
-  const breakdown = {
-    qc:         { label: "QC Score",         val: t.qc,                                  weight: qcW,   contrib: qcContrib   },
-    nps:        { label: "NPS Tutor",        val: t.nps,                                 weight: npsW,  contrib: npsContrib  },
-    inspection: { label: "Class Inspection", val: t.hasInspection ? t.inspection : null, weight: insW,  contrib: insContrib  },
-    compliance: { label: "Compliance",       val: t.compliance,                          weight: compW, contrib: compContrib },
-  };
+  const qcContrib   = (qcVal   ?? 0) * qcW;
+  const npsContrib  = (npsVal  ?? 0) * npsW;
+  const insContrib  = (insVal  ?? 0) * insW;
+  const compContrib = (compVal ?? 0) * compW;
 
   const raw     = qcContrib + npsContrib + insContrib + compContrib;
-  const penalty = t.gantiTutor >= 1 && t.gantiTutor < 3 ? 10 : 0;
-  const final   = Math.max(0, Math.round(raw - penalty));
+  const ganti   = Number(t.gantiTutor) || 0;
+  const penalty = ganti >= 1 && ganti < 3 ? 10 : 0;
+  const final   = sumW > 0 ? Math.max(0, Math.round(raw - penalty)) : 0;
+
+  const breakdown = {
+    qc:         { label: "QC Score",         val: qcVal,   weight: qcW,   contrib: qcContrib   },
+    nps:        { label: "NPS Tutor",        val: npsVal,  weight: npsW,  contrib: npsContrib  },
+    inspection: { label: "Class Inspection", val: insVal,  weight: insW,  contrib: insContrib  },
+    compliance: { label: "Compliance",       val: compVal, weight: compW, contrib: compContrib },
+  };
 
   return { final, penalty, breakdown, disqualifiedReason: null };
 }

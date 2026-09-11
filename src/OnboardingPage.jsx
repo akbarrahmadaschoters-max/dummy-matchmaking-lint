@@ -340,6 +340,34 @@ export default function OnboardingPage({ teachers, setTeachers }) {
     }
   };
 
+// Helper for flexible CSV header matching
+const normalizeHeader = (str) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const findRowValue = (row, possibleKeys) => {
+  if (!row) return undefined;
+  const rowKeys = Object.keys(row);
+  for (const key of possibleKeys) {
+    const targetNorm = normalizeHeader(key);
+    const matchedKey = rowKeys.find(k => normalizeHeader(k) === targetNorm);
+    if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== null) {
+      const valStr = String(row[matchedKey]).trim();
+      if (valStr !== "") return row[matchedKey];
+    }
+  }
+  return undefined;
+};
+
+const parseNumberSafe = (val) => {
+  if (val === null || val === undefined) return null;
+  let str = String(val).trim();
+  if (str === "" || str === "-" || str === "—" || str.toLowerCase() === "null" || str.toLowerCase() === "undefined" || str.toLowerCase() === "n/a") {
+    return null;
+  }
+  str = str.replace(/%/g, "").replace(/,/g, ".").trim();
+  const num = Number(str);
+  return isNaN(num) ? null : num;
+};
+
   // Upload & Bulky CSV Import
   const handleFileUpload = (e, targetIdentifier) => {
     const file = e.target.files[0];
@@ -355,19 +383,22 @@ export default function OnboardingPage({ teachers, setTeachers }) {
 
         parsed.forEach((row, idx) => {
           try {
-            const name = String(row["Nama Tutor"] || row["Name"] || "").trim();
+            const name = String(findRowValue(row, ["Nama Tutor", "Nama Teacher", "Nama", "Name", "Nama Lengkap", "Tutor Name", "Teacher Name", "Tutor"]) || "").trim();
             if (!name) return;
 
-            const p = String(row["Program"] || "Lingua").trim();
-            const qcRaw = row["Skor QC"] || row["QC Score"];
-            const qc = (qcRaw !== null && qcRaw !== undefined && String(qcRaw).trim() !== "") ? Number(qcRaw) : null;
+            const p = String(findRowValue(row, ["Program", "Subjek", "Subject", "Tutor Type", "Program / Subject", "Tipe Tutor"]) || "Lingua").trim();
+            const qcRaw = findRowValue(row, ["Skor QC", "QC Score", "QC", "Skor Qc", "Nilai QC", "Skor QC (0-100)", "QC score"]);
+            const qc = parseNumberSafe(qcRaw);
 
-            const npsRaw = row["Skor NPS"] || row["NPS Score"];
-            const nps = (npsRaw !== null && npsRaw !== undefined && String(npsRaw).trim() !== "") ? Number(npsRaw) : null;
+            const npsRaw = findRowValue(row, ["Skor NPS", "NPS Score", "NPS", "Skor Nps", "Nilai NPS"]);
+            const nps = parseNumberSafe(npsRaw);
 
-            const compRaw = row["Compliance"];
-            const comp = compRaw ? Number(compRaw) : 85;
-            const kota = String(row["Kota"] || "Jakarta").trim();
+            const compRaw = findRowValue(row, ["Compliance", "Skor Compliance", "Compliance Score", "Nilai Compliance"]);
+            const comp = parseNumberSafe(compRaw) ?? 85;
+            const kota = String(findRowValue(row, ["Kota", "Kota Tinggal Sekarang", "Kota Domisili", "City"]) || "Jakarta").trim();
+
+            const inspRaw = findRowValue(row, ["Class Inspection", "Inspection", "Skor Inspection", "Nilai Inspection", "Inspection Score"]);
+            const parsedInsp = parseNumberSafe(inspRaw);
 
             newTeachers.push({
               id: (Date.now() + idx).toString(),
@@ -379,8 +410,8 @@ export default function OnboardingPage({ teachers, setTeachers }) {
               kota,
               availability: "Moderate",
               identifier: targetIdentifier, // 'Baru' or 'Lama'
-              hasInspection: false,
-              inspection: null,
+              hasInspection: parsedInsp !== null,
+              inspection: parsedInsp,
               gantiTutor: 0
             });
           } catch (err) {

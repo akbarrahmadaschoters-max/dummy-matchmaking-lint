@@ -344,7 +344,7 @@ function DrillDown({ teacher, score, onClose, onDisqualify, gToken, setGToken })
               {Object.entries(breakdown).map(([k, item]) => {
                 if (!item) return null;
                 const isIns = k === "inspection";
-                const isMissing = item.val === null;
+                const isMissing = item.val === null || item.val === undefined || isNaN(item.val);
                 return (
                   <div key={k} style={{ background: "#F8FAFC", padding: "12px 16px", borderRadius: 12, border: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600, color: "#0F172A", marginBottom: 6 }}>
@@ -535,6 +535,35 @@ function PaginationBar({ currentPage, totalPages, totalItems, onPageChange, labe
   );
 }
 
+// Helper for flexible CSV header matching
+const normalizeHeader = (str) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const findRowValue = (row, possibleKeys) => {
+  if (!row) return undefined;
+  const rowKeys = Object.keys(row);
+  for (const key of possibleKeys) {
+    const targetNorm = normalizeHeader(key);
+    const matchedKey = rowKeys.find(k => normalizeHeader(k) === targetNorm);
+    if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== null) {
+      const valStr = String(row[matchedKey]).trim();
+      if (valStr !== "") return row[matchedKey];
+    }
+  }
+  return undefined;
+};
+
+// Safe number parser supporting comma decimal (85,5 -> 85.5), percentage, 0 values, and filtering nulls
+const parseNumberSafe = (val) => {
+  if (val === null || val === undefined) return null;
+  let str = String(val).trim();
+  if (str === "" || str === "-" || str === "—" || str.toLowerCase() === "null" || str.toLowerCase() === "undefined" || str.toLowerCase() === "n/a") {
+    return null;
+  }
+  str = str.replace(/%/g, "").replace(/,/g, ".").trim();
+  const num = Number(str);
+  return isNaN(num) ? null : num;
+};
+
 // ─── Main Dashboard ────────────────────────────────────────────
 export default function DashboardPage({ teachers, setTeachers }) {
   const [filterProgram, setFilterProgram] = useState("All");
@@ -563,6 +592,17 @@ export default function DashboardPage({ teachers, setTeachers }) {
     setPageMain(1);
   }, [filterProgram, filterStatus, filterAvail, search, activeMetric]);
 
+  // Auto-repair existing teachers that have QC score but are stuck in identifier === "Baru"
+  useEffect(() => {
+    if (!teachers || teachers.length === 0) return;
+    const stuck = teachers.filter(t => t.identifier === "Baru" && t.qc !== null && t.qc !== undefined && Number(t.qc) > 0);
+    if (stuck.length > 0) {
+      stuck.forEach(t => {
+        updateTeacher({ ...t, identifier: "Lama" });
+      });
+    }
+  }, [teachers]);
+
   const downloadTemplate = () => {
     const header = "No,Tier,Nama Tutor,Skor QC,Skor NPS,Jumlah Detractors,Jumlah Passives,Jumlah Promoters,Compliance,Ganti Tutor,Program\n";
     const blob = new Blob([header], { type: "text/csv;charset=utf-8;" });
@@ -584,25 +624,80 @@ export default function DashboardPage({ teachers, setTeachers }) {
         const errors = [];
         parsed.forEach((row, idx) => {
           try {
-            const p = String(row["Program"] || "").trim();
-            const name = String(row["Nama Tutor"] || "").trim();
-            if (!p || !name) throw new Error("Program atau Nama Tutor kosong");
-            
-            let qcRaw = row["Skor QC"];
-            let qc = (qcRaw === null || qcRaw === undefined || String(qcRaw).trim() === "" || Number(qcRaw) === 0) ? null : Number(qcRaw);
+            const name = String(findRowValue(row, ["Nama Tutor", "Nama Teacher", "Nama", "Name", "Nama Lengkap", "Tutor Name", "Teacher Name", "Tutor"]) || "").trim();
+            let p = String(findRowValue(row, ["Program", "Subjek", "Subject", "Tutor Type", "Program / Subject", "Tipe Tutor"]) || "Lingua").trim();
 
-            const d = Number(row["Jumlah Detractors"]) || 0;
-            const pa = Number(row["Jumlah Passives"]) || 0;
-            const pr = Number(row["Jumlah Promoters"]) || 0;
-            const total = d + pa + pr;
-            let nps = 0;
-            if (total > 0) {
-              const rawNps = ((pr - d) / total) * 100;
-              nps = Math.round((rawNps + 100) / 2);
+            if (!name) {
+              throw new Error("Nama Tutor kosong");
             }
 
-            const comp = Number(row["Compliance"]) || 0;
-            const ganti = Number(row["Ganti Tutor"]) || 0;
+            // 1. Skor QC
+            const qcRaw = findRowValue(row, ["Skor QC", "QC Score", "QC", "Skor Qc", "Nilai QC", "Skor QC (0-100)", "QC score"]);
+            const qc = parseNumberSafe(qcRaw);
+
+            // 2. Skor NPS (Check direct NPS column first, fallback to Detractors/Passives/Promoters)
+            const directNpsRaw = findRowValue(row, ["Skor NPS", "NPS Score", "NPS", "Skor Nps", "Nilai NPS"]);
+            let nps = parseNumberSafe(directNpsRaw);
+
+            if (nps === null) {
+              const d = parseNumberSafe(findRowValue(row, ["Jumlah Detractors", "Detractors", "Detractor"])) || 0;
+              const pa = parseNumberSafe(findRowValue(row, ["Jumlah Passives", "Passives", "Passive"])) || 0;
+              const pr = parseNumberSafe(findRowValue(row, ["Jumlah Promoters", "Promoters", "Promoter"])) || 0;
+              const total = d + pa + pr;
+              if (total > 0) {
+                const rawNps = ((pr - d) / total) * 100;
+                nps = Math.round((rawNps + 100) / 2);
+              }
+            }
+
+            // 3. Compliance
+            const compRaw = findRowValue(row, ["Compliance", "Skor Compliance", "Compliance Score", "Nilai Compliance"]);
+            const comp = parseNumberSafe(compRaw) ?? 85;
+
+            // 4. Ganti Tutor
+            const gantiRaw = findRowValue(row, ["Ganti Tutor", "Penalty Ganti Tutor", "GantiTutor", "Ganti Tutor (Jumlah)", "Penalty"]);
+            const ganti = parseNumberSafe(gantiRaw) ?? 0;
+
+            // 5. Class Inspection
+            const inspRaw = findRowValue(row, ["Class Inspection", "Inspection", "Skor Inspection", "Nilai Inspection", "Inspection Score"]);
+            const parsedInsp = parseNumberSafe(inspRaw);
+            const hasInspection = parsedInsp !== null;
+            const inspection = parsedInsp;
+
+            // 6. Availability
+            const availRaw = findRowValue(row, ["Availability", "Time Availability", "Classification", "Classification 5", "Ketersediaan"]);
+            let availability = "Moderate";
+            if (availRaw) {
+              const availStr = String(availRaw).trim();
+              if (/high/i.test(availStr)) availability = "High";
+              else if (/low/i.test(availStr)) availability = "Low";
+              else if (/moderate|medium/i.test(availStr)) availability = "Moderate";
+              else availability = availStr;
+            }
+
+            // 7. Identifier (Baru vs Lama)
+            const identifierRaw = findRowValue(row, ["Identifier", "Tier", "Status Tutor", "Status Kemitraan", "Status", "Tipe Tutor"]);
+            let identifier = "Lama";
+            if (identifierRaw) {
+              const idStr = String(identifierRaw).toLowerCase().trim();
+              if (idStr.includes("baru") || idStr.includes("onboarding") || idStr.includes("new")) {
+                identifier = "Baru";
+              } else if (idStr.includes("lama") || idStr.includes("utama") || idStr.includes("reguler") || idStr.includes("active")) {
+                identifier = "Lama";
+              }
+            } else {
+              // Default to "Lama" (Pool Utama) if QC score exists, otherwise "Baru"
+              if (qc === null) {
+                identifier = "Baru";
+              } else {
+                identifier = "Lama";
+              }
+            }
+
+            // 8. Contact & Location
+            const kota = String(findRowValue(row, ["Kota", "Kota Tinggal Sekarang", "Kota Domisili", "City"]) || "").trim();
+            const phone = String(findRowValue(row, ["Phone Number", "Phone", "No. Telp", "No Telp", "No HP", "WhatsApp"]) || "").trim();
+            const email = String(findRowValue(row, ["Email", "Email Address"]) || "").trim();
 
             ready.push({
               id: (Date.now() + idx).toString(),
@@ -612,10 +707,13 @@ export default function DashboardPage({ teachers, setTeachers }) {
               nps,
               compliance: comp,
               gantiTutor: ganti,
-              hasInspection: false,
-              inspection: null,
-              availability: "Moderate",
-              identifier: "Baru",
+              hasInspection,
+              inspection,
+              availability,
+              identifier,
+              kota,
+              phone,
+              email,
               availabilitySlots: []
             });
           } catch(err) {
